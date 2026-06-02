@@ -5,7 +5,8 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-restore-token",
 };
 
-const RESTORE_TOKEN = Deno.env.get("RESTORE_TOKEN") ?? "";
+// Temporary token; this entire function is deleted after the one-time restore.
+const RESTORE_TOKEN = "f6f2ea23061f834e16999096cd998ae8aed2f7af9374ad2875e1735fdf0f99d5";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
