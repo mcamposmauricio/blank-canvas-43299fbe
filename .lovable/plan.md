@@ -1,51 +1,66 @@
 ## Objetivo
 
-Restaurar no projeto Supabase atual (`zvltrjcpecqpplbtzwhz`) o sistema MarQ HR a partir do `export-2026-06-02T16-31-57-474Z.zip`. O código React e o código das Edge Functions já estão clonados; falta recriar **schema, dados, auth, storage e config**.
+Concluir a restauração do sistema MarQ HR no projeto Supabase **externo** `zvltrjcpecqpplbtzwhz` — sem usar Lovable Cloud, Lovable Emails, connectors ou qualquer recurso gerenciado pela Lovable. Apenas Supabase puro (migrations, edge functions, storage, auth admin API) + Resend direto via HTTP.
 
 ## Estado atual
 
-- Banco vazio. Sem tabelas, sem funções, sem triggers, sem buckets.
-- Edge functions já existem em `supabase/functions/*` (10 funções).
-- `supabase/config.toml` só tem `project_id` — falta `verify_jwt = false` para as funções que validam JWT internamente.
-- Secrets básicos do Supabase OK. Falta `RESEND_API_KEY` (será solicitado depois, não bloqueia restauração).
+- Schema restaurado: 23 tabelas, 3 enums, 8 funções, 8 triggers, 43 policies.
+- Trigger `on_auth_user_created` em `auth.users` já recriado.
+- Banco vazio: 0 linhas em todas as tabelas.
+- Sem buckets, sem usuários auth, sem `RESEND_API_KEY`.
+- Sandbox **não** tem `psql` nem `SUPABASE_SERVICE_ROLE_KEY` exposto como env do shell — `service_role` existe apenas como Edge Function Secret no projeto Supabase.
+- Edge functions já existentes (`send-survey-emails`, `send-welcome-email`) chamam **Resend diretamente** via `fetch("https://api.resend.com/emails", …)` usando `Deno.env.get("RESEND_API_KEY")`. Nenhuma dependência de connector ou gateway Lovable.
 
-## Conteúdo útil do zip
+## Princípio de "sem Lovable Cloud"
 
-- `schema/introspection.json` — 3 enums, 23 tabelas, 8 funções, 8 triggers, 43 policies.
-- `data/*.ndjson` — 23 tabelas (ex.: tenants 11, profiles 20, employees 166, survey_answers 8982, etc.).
-- `auth/users.json` — 20 usuários (sem hash de senha).
-- `storage/inventory.json` + `_files.json` por bucket — **apenas metadados**, binários não estão no zip.
-- `config/secret-names.json` — lista de secrets esperados.
+- **Não** usar `email_domain--*`, `setup_email_infra`, `scaffold_transactional_email`, queue pgmq, cron de emails, `auth-email-hook` da Lovable.
+- **Não** usar connectors (`standard_connectors--*`) nem o gateway `connector-gateway.lovable.dev`.
+- Emails de auth (reset de senha, confirmação) continuam saindo pelo **SMTP nativo do Supabase** (configurável em Auth → SMTP no painel Supabase, fora do nosso escopo aqui).
+- Emails transacionais do app (convites de survey, welcome) saem das edge functions chamando **API HTTP da Resend** diretamente, com `RESEND_API_KEY` armazenado como **Supabase Edge Function Secret** (não como secret Lovable Cloud).
 
 ## Passos
 
-### 1. Migration única reconstruindo o schema
+### 1. Armazenar `RESEND_API_KEY` no Supabase
 
-Gerar SQL a partir de `introspection.json` na ordem:
+A chave `re_VJHYJHKw_9CvY1zLjs3Gha9qGUTcGzdvP` precisa virar Edge Function Secret no projeto Supabase. Caminhos possíveis, sem Lovable Cloud:
 
-1. `CREATE TYPE` para os 3 enums (`action_status`, `app_role`, `campaign_status`).
-2. `CREATE TABLE public.<nome>` para as 23 tabelas, com colunas/types/defaults/not-null vindos da introspecção. PKs e FKs reconstruídas a partir das convenções (`id uuid PK`, `<x>_id uuid` → `<x>(id)`). FKs explicitamente mapeadas onde houver risco: `profiles.tenant_id → tenants.id`, `departments.org_unit_id → org_units.id`, `employees.{tenant_id,department_id,job_role_id}`, `survey_*` chains, `action_plans.{tenant_id,campaign_id,department_id}`, `consent_records`, `audit_logs`, `platform_exports.created_by`, etc.
-3. `GRANT` para cada tabela `public`: padrão `SELECT,INSERT,UPDATE,DELETE` para `authenticated` e `ALL` para `service_role`. `anon` ganha `SELECT` apenas onde o RLS permitir (verificar policies — provavelmente nenhuma, pois tudo escopa por `auth.uid()` ou `tenant_id`; `survey_invitations` por token é validado em edge function com service_role).
-4. `ALTER TABLE ... ENABLE ROW LEVEL SECURITY` em todas as 23 tabelas.
-5. `CREATE FUNCTION` para as 8 funções (definições copiadas verbatim do introspection: `update_updated_at_column`, `has_role`, `get_user_tenant_id`, `get_user_department_id`, `get_employee_metadata_by_token`, `handle_new_user`, `export_dump_schema`, `export_list_public_tables`).
-6. `CREATE TRIGGER` para os 8 triggers `update_*_updated_at` (definições verbatim).
-7. Trigger `on_auth_user_created AFTER INSERT ON auth.users` → `handle_new_user()` (não está no introspection porque vive em `auth`, mas a função `handle_new_user` está; é o gatilho padrão Supabase de signup).
-8. `CREATE POLICY` para as 43 policies (cmd/qual/with_check/roles verbatim).
+- **Opção A (recomendada)**: você cola a chave em https://supabase.com/dashboard/project/zvltrjcpecqpplbtzwhz/settings/functions → "Add new secret" → nome `RESEND_API_KEY`. É o método oficial do Supabase e não passa pela infra da Lovable.
+- **Opção B**: eu uso a tool `secrets--add_secret` (que, neste projeto conectado a Supabase externo, repassa o valor para o Edge Function Secret do próprio Supabase — sem criar nada do lado Lovable Cloud). Funcionalmente equivalente à Opção A.
 
-### 2. Buckets de storage
+A função `send-survey-emails` já checa `Deno.env.get("RESEND_API_KEY")` e retorna erro claro se ausente.
 
-Criados via tool dedicada (não SQL):
-- `logos` — público.
-- `reports` — privado.
-- `platform-exports` — privado.
+### 2. Ajustar `supabase/config.toml`
 
-Policies de storage para super admin (`platform-exports`) e leitura pública (`logos`) replicadas a partir do código/uso atual.
+Adicionar `[functions.<nome>] verify_jwt = false` para as 10 edge functions existentes (todas validam JWT/secret internamente):
+`capture-consent, create-tenant-user, delete-tenant-user, full-system-export, generate-report, process-scoring, seed-demo-tenant, seed-test-data, send-survey-emails, send-welcome-email`.
 
-**Binários não estão no zip.** Logos de tenant (`tenants.logo_url`) e PDFs/HTMLs em `reports` continuarão referenciados mas com 404 até serem repostos. Documentado para o usuário.
+Adicionar também `[functions.restore-seed] verify_jwt = false` para a função temporária do passo 4.
 
-### 3. Seed dos dados (`data/*.ndjson`)
+### 3. Criar os 3 buckets de storage
 
-Script Node executado via `code--exec` usando `SUPABASE_SERVICE_ROLE_KEY` (bypass RLS). Ordem respeitando FKs:
+Via tool dedicada de bucket do Supabase:
+- `logos` — público
+- `reports` — privado
+- `platform-exports` — privado
+
+Migration separada com policies em `storage.objects`:
+- `logos`: SELECT público; INSERT/UPDATE/DELETE para `authenticated` no escopo do tenant.
+- `reports`: SELECT/INSERT/UPDATE/DELETE só para `authenticated` cujo `tenant_id` (via `get_user_tenant_id(auth.uid())`) bata com a primeira pasta do path.
+- `platform-exports`: tudo restrito a super admin (`has_role(auth.uid(), 'super_admin')`).
+
+**Binários não estão no zip** — referências em `tenants.logo_url` e tabela `reports` ficarão 404 até serem regerados (via `generate-report`) ou repostos manualmente.
+
+### 4. Seed de dados + auth users via edge function temporária
+
+Como não temos `psql` nem service role no shell, crio `supabase/functions/restore-seed/index.ts` que roda dentro do Supabase (onde `SUPABASE_SERVICE_ROLE_KEY` é `Deno.env`):
+
+1. Autentica pelo header `x-restore-token` (segredo aleatório que eu gero e te mostro só nesta execução).
+2. Recebe payload `{ table: string, rows: any[] }` ou `{ users: [...] }`.
+3. Para `users`: desabilita trigger (`ALTER TABLE auth.users DISABLE TRIGGER on_auth_user_created`), cria os 20 via `supabase.auth.admin.createUser({ id, email, email_confirm: true, user_metadata })` preservando IDs, reabilita o trigger ao final.
+4. Para tabelas: upsert por `id` em batches de 500, bypass RLS via service role.
+5. Retorna contagem inserida.
+
+Sandbox orquestra: lê `/tmp/exp/data/*.ndjson` e `/tmp/exp/auth/users.json`, dispara `fetch` para a função respeitando a ordem de FK:
 
 ```
 tenants
@@ -59,42 +74,31 @@ risk_alerts → action_plans
 reports, consent_records, audit_logs, platform_exports
 ```
 
-Inserts em lote (chunks de ~500). Ao final, comparar contagens com `manifest.json.tables` e reportar diferenças.
+Ao final, deleto a função com `supabase--delete_edge_functions` para não deixar rota privilegiada exposta.
 
-### 4. Auth users
+### 5. Validação final
 
-Para cada um dos 20 usuários de `auth/users.json`:
-- `supabase.auth.admin.createUser({ id, email, email_confirm: true, user_metadata, app_metadata })` preservando o `id` (essencial para FKs em `profiles.user_id`, `user_roles.user_id`, `platform_exports.created_by`).
-- O trigger `on_auth_user_created` precisa ser **temporariamente desabilitado** durante o seed para não duplicar tenants (o seed já traz `profiles` e `user_roles` reais). Habilitar de volta depois.
-- Senhas não exportáveis: usuários precisam usar "Esqueci minha senha" no primeiro acesso. Documentado.
-
-### 5. `supabase/config.toml`
-
-Adicionar blocos `[functions.<nome>] verify_jwt = false` para as 10 funções existentes (todas validam JWT/secret internamente):
-`capture-consent, create-tenant-user, delete-tenant-user, full-system-export, generate-report, process-scoring, seed-demo-tenant, seed-test-data, send-survey-emails, send-welcome-email`.
-
-### 6. Secrets
-
-Verificar via `fetch_secrets`. `RESEND_API_KEY` está faltando — necessário para `send-survey-emails` e `send-welcome-email`. Será pedido **só quando** o usuário for usar essas funções (não bloqueia o resto). Demais secrets do Supabase já existem.
-
-### 7. Validação final
-
-- Contagem por tabela bate com `manifest.json`.
+- Contagens por tabela batem com `manifest.json` (tenants 11, profiles 20, employees 166, survey_answers 8982, …).
 - `SELECT count(*) FROM auth.users` = 20.
-- Lista de policies/triggers/funções bate com introspecção.
-- Smoke test: abrir `/auth`, fazer reset de senha de um super admin (`mauricio@marqponto.com.br`), entrar, conferir que `/dashboard` carrega e `/atividades` aparece para o super admin.
+- Smoke test manual: super admin (`mauricio@marqponto.com.br`) usa "Esqueci minha senha" no `/auth`, entra, abre `/dashboard` e `/atividades`.
+- Teste opcional de envio: chamar `send-survey-emails` em uma campanha de teste para validar Resend.
 
 ## Limitações conhecidas
 
-- **Senhas**: zero usuários conseguem entrar sem reset por email (limitação do Supabase, não do export).
-- **Binários do storage** (logos dos tenants, PDFs e HTMLs em `reports`): não estão no zip; ficarão 404 até serem repostos a partir do projeto original via `supabase storage cp` ou regerados pelas funções (`generate-report` recria HTMLs).
-- **Trigger `on_auth_user_created`**: o introspection só dump triggers de `public`; a versão recriada é fiel ao `handle_new_user` capturado e ao fluxo de signup usado em `Auth.tsx`.
-- **FKs inferidas por convenção**: como o introspection.json exportado não traz as constraints explicitamente, FKs serão inferidas pelo nome (`<x>_id → <x>.id`). Caso alguma diferença apareça no seed (violação de FK), ajusto pontualmente.
+- **Senhas**: nenhum usuário entra sem reset por email (export Supabase não traz hash). Reset depende do SMTP do Supabase estar configurado para `flewpulse.com.br` (ou usar o SMTP default do Supabase para o primeiro acesso).
+- **Binários de storage**: logos de tenant e PDFs/HTMLs em `reports` ficarão 404 até repostos ou regerados via `generate-report`.
+- **`tenants.logo_url`** continua apontando para URLs do projeto antigo até o re-upload.
+- Como decidimos não usar Lovable Emails: emails de auth (reset de senha, confirmação) saem pelo SMTP configurado no Supabase. Se quiser usar o domínio `flewpulse.com.br` nesses emails, é necessário configurar SMTP custom no painel do Supabase (Auth → SMTP). Fora do escopo deste plano.
 
 ## Arquivos afetados
 
-- Novo: `supabase/migrations/<ts>_restore_marqhr_schema.sql` (migração única grande, gerada a partir do introspection).
-- Editado: `supabase/config.toml` (blocos `[functions.*]`).
-- Temporário em `/tmp/`: script de seed (não vai pro repo).
+- Editado: `supabase/config.toml` (blocos `[functions.*] verify_jwt = false`).
+- Criado e deletado ao final: `supabase/functions/restore-seed/index.ts`.
+- Nova migration: policies de `storage.objects` para os 3 buckets.
+- Edge Function Secret no Supabase: `RESEND_API_KEY`.
 
 Nada no frontend muda.
+
+## Após sua aprovação
+
+Executo na ordem: `RESEND_API_KEY` → `config.toml` → buckets + policies → função `restore-seed` → seed orquestrado → validação de contagens → deleção da `restore-seed` → relatório final.
