@@ -29,6 +29,3 @@ verify_jwt = false
 
 [functions.send-welcome-email]
 verify_jwt = false
-
-[functions.restore-seed]
-verify_jwt = false
