@@ -1,117 +1,100 @@
-# Menu "Atividades" + Exportação Completa do Sistema
+## Objetivo
 
-Funcionalidade exclusiva do usuário `mauricio@marqponto.com.br` (uid `302dc367-1b53-4a47-af5e-d54a6b877e59`) — super-admin de plataforma. Nenhuma outra conta vê ou acessa.
+Restaurar no projeto Supabase atual (`zvltrjcpecqpplbtzwhz`) o sistema MarQ HR a partir do `export-2026-06-02T16-31-57-474Z.zip`. O código React e o código das Edge Functions já estão clonados; falta recriar **schema, dados, auth, storage e config**.
 
-## 1. Identificação do super-admin
+## Estado atual
 
-Criar helper único usado em frontend e backend:
+- Banco vazio. Sem tabelas, sem funções, sem triggers, sem buckets.
+- Edge functions já existem em `supabase/functions/*` (10 funções).
+- `supabase/config.toml` só tem `project_id` — falta `verify_jwt = false` para as funções que validam JWT internamente.
+- Secrets básicos do Supabase OK. Falta `RESEND_API_KEY` (será solicitado depois, não bloqueia restauração).
 
-- Frontend: `src/lib/superAdmin.ts` exporta `SUPER_ADMIN_EMAIL` e `isSuperAdmin(profile)`.
-- Backend: validação por **email + user_id** dentro da Edge Function (defesa em profundidade).
+## Conteúdo útil do zip
 
-Sem mudanças em `app_role` nem em RLS existente — é um gate adicional, não uma nova role do tenant.
+- `schema/introspection.json` — 3 enums, 23 tabelas, 8 funções, 8 triggers, 43 policies.
+- `data/*.ndjson` — 23 tabelas (ex.: tenants 11, profiles 20, employees 166, survey_answers 8982, etc.).
+- `auth/users.json` — 20 usuários (sem hash de senha).
+- `storage/inventory.json` + `_files.json` por bucket — **apenas metadados**, binários não estão no zip.
+- `config/secret-names.json` — lista de secrets esperados.
 
-## 2. Menu "Atividades" (frontend)
+## Passos
 
-- Nova entrada no sidebar (`src/components/layout/AppSidebar.tsx`), em um grupo separado **"Plataforma"** que só renderiza se `isSuperAdmin`. Ícone `Database` / `Package`.
-- Rota `/atividades` em `src/App.tsx`, protegida por um novo wrapper `<SuperAdminRoute>` (similar ao `ProtectedRoute`, mas valida email do `profile`). Quem não for super-admin é redirecionado para `/dashboard`.
-- Não tocar em `ROUTE_ALLOWED_ROLES` — o gate é por identidade, não por role.
+### 1. Migration única reconstruindo o schema
 
-## 3. Página `/atividades` — Exportação Completa do Sistema
+Gerar SQL a partir de `introspection.json` na ordem:
 
-`src/pages/Atividades.tsx`:
+1. `CREATE TYPE` para os 3 enums (`action_status`, `app_role`, `campaign_status`).
+2. `CREATE TABLE public.<nome>` para as 23 tabelas, com colunas/types/defaults/not-null vindos da introspecção. PKs e FKs reconstruídas a partir das convenções (`id uuid PK`, `<x>_id uuid` → `<x>(id)`). FKs explicitamente mapeadas onde houver risco: `profiles.tenant_id → tenants.id`, `departments.org_unit_id → org_units.id`, `employees.{tenant_id,department_id,job_role_id}`, `survey_*` chains, `action_plans.{tenant_id,campaign_id,department_id}`, `consent_records`, `audit_logs`, `platform_exports.created_by`, etc.
+3. `GRANT` para cada tabela `public`: padrão `SELECT,INSERT,UPDATE,DELETE` para `authenticated` e `ALL` para `service_role`. `anon` ganha `SELECT` apenas onde o RLS permitir (verificar policies — provavelmente nenhuma, pois tudo escopa por `auth.uid()` ou `tenant_id`; `survey_invitations` por token é validado em edge function com service_role).
+4. `ALTER TABLE ... ENABLE ROW LEVEL SECURITY` em todas as 23 tabelas.
+5. `CREATE FUNCTION` para as 8 funções (definições copiadas verbatim do introspection: `update_updated_at_column`, `has_role`, `get_user_tenant_id`, `get_user_department_id`, `get_employee_metadata_by_token`, `handle_new_user`, `export_dump_schema`, `export_list_public_tables`).
+6. `CREATE TRIGGER` para os 8 triggers `update_*_updated_at` (definições verbatim).
+7. Trigger `on_auth_user_created AFTER INSERT ON auth.users` → `handle_new_user()` (não está no introspection porque vive em `auth`, mas a função `handle_new_user` está; é o gatilho padrão Supabase de signup).
+8. `CREATE POLICY` para as 43 policies (cmd/qual/with_check/roles verbatim).
 
-- Card único "Exportação Completa do Sistema" com botão **"Gerar pacote de exportação"**.
-- Ao clicar: chama Edge Function `full-system-export` via `supabase.functions.invoke`, recebendo stream de logs por SSE / chunked response.
-- UI: barra de progresso (`Progress`), painel de logs em tempo real (texto monoespaçado), estado final com link de download direto do `.zip` no Storage (URL assinada, expira em 1h).
-- Histórico das últimas 10 exportações listadas abaixo (tabela `platform_exports`).
+### 2. Buckets de storage
 
-## 4. Edge Function `full-system-export`
+Criados via tool dedicada (não SQL):
+- `logos` — público.
+- `reports` — privado.
+- `platform-exports` — privado.
 
-`supabase/functions/full-system-export/index.ts`, `verify_jwt = false` (validação interna):
+Policies de storage para super admin (`platform-exports`) e leitura pública (`logos`) replicadas a partir do código/uso atual.
 
-1. Valida `Authorization: Bearer <jwt>` via `supabase.auth.getUser()` e confirma `email === mauricio@marqponto.com.br` **e** `user_id === 302dc367-...`. Qualquer divergência → 403.
-2. Coleta tudo com `SUPABASE_SERVICE_ROLE_KEY`:
-   - **Schema do banco**: query em `information_schema` + `pg_catalog` para tabelas, colunas, índices, constraints, views, sequences, enums (ex.: `app_role`, `action_status`, `campaign_status`).
-   - **Functions/triggers**: `pg_proc` + `pg_trigger` (schema `public`).
-   - **RLS policies**: `pg_policies`.
-   - **Migrations existentes**: lê `supabase/migrations/` empacotado junto (via arquivos do repo incluídos no deploy da função — alternativa: reconstruir DDL via introspecção).
-   - **Dados**: `SELECT *` de todas as tabelas `public` → NDJSON por tabela.
-   - **Storage**: lista buckets (`reports`, `logos`) e baixa todos os objetos via `storage.from(bucket).download()`.
-   - **Auth**: `auth.admin.listUsers()` (metadata + emails, sem senhas — senhas não são exportáveis; documentado no README).
-   - **Edge Functions**: snapshot do código-fonte das funções (incluído no bundle do deploy via leitura de `Deno.readTextFile` nos arquivos disponíveis no runtime, ou listados como referência no README quando não acessíveis).
-   - **Config**: `supabase/config.toml`, lista de secrets (apenas nomes, nunca valores), providers de auth ativos.
-3. Monta `.zip` em memória usando `jsr:@zip-js/zip-js`:
-   ```
-   export-YYYYMMDD-HHMMSS.zip
-   ├── README.md                  ← prompt de reconstrução
-   ├── manifest.json              ← inventário + checksums
-   ├── schema/
-   │   ├── 01_extensions.sql
-   │   ├── 02_enums.sql
-   │   ├── 03_tables.sql
-   │   ├── 04_views.sql
-   │   ├── 05_functions.sql
-   │   ├── 06_triggers.sql
-   │   ├── 07_rls_policies.sql
-   │   └── 08_grants.sql
-   ├── data/<table>.ndjson
-   ├── storage/<bucket>/<path>
-   ├── edge-functions/<name>/index.ts
-   ├── auth/users.json            ← sem hashes de senha
-   ├── auth/config.json
-   ├── migrations/*.sql           ← cópia de supabase/migrations
-   ├── frontend/package.json      ← referência de deps
-   └── config/supabase.config.toml
-   ```
-4. Upload do `.zip` para bucket privado **novo** `platform-exports` (criado na migração); gera URL assinada de 1h e devolve no payload final.
-5. Registra linha em `platform_exports` (id, gerado_em, tamanho_bytes, caminho_storage, logs_resumo).
-6. Stream de progresso via `ReadableStream` (chunks JSON `{stage, pct, message}`).
+**Binários não estão no zip.** Logos de tenant (`tenants.logo_url`) e PDFs/HTMLs em `reports` continuarão referenciados mas com 404 até serem repostos. Documentado para o usuário.
 
-### README.md gerado (prompt para IA)
+### 3. Seed dos dados (`data/*.ndjson`)
 
-Texto fixo embutido na função, instruindo a IA destinatária a:
-- criar projeto Supabase novo + projeto Lovable;
-- aplicar `schema/*.sql` em ordem;
-- importar `data/*.ndjson` com `COPY` ou inserts em lote, respeitando FKs;
-- recriar buckets e fazer upload de `storage/**`;
-- redeployar `edge-functions/*` com mesma config (`verify_jwt`);
-- recriar auth users a partir de `auth/users.json` (senhas precisam reset — documentado);
-- conferir RLS, roles, multi-tenant e providers de auth conforme `auth/config.json`;
-- validar `manifest.json` checksums após restauração.
+Script Node executado via `code--exec` usando `SUPABASE_SERVICE_ROLE_KEY` (bypass RLS). Ordem respeitando FKs:
 
-## 5. Banco de dados
+```
+tenants
+profiles, user_roles
+org_units → departments → job_roles → employees
+survey_templates → survey_dimensions → survey_items
+survey_campaigns → survey_invitations
+survey_responses → survey_answers
+response_scores → campaign_scores → group_scores
+risk_alerts → action_plans
+reports, consent_records, audit_logs, platform_exports
+```
 
-Migração nova:
+Inserts em lote (chunks de ~500). Ao final, comparar contagens com `manifest.json.tables` e reportar diferenças.
 
-- Tabela `platform_exports` (id, created_at, created_by, file_path, file_size_bytes, status, logs jsonb). RLS: `SELECT/INSERT` permitidos somente quando `auth.uid() = '302dc367-1b53-4a47-af5e-d54a6b877e59'`. GRANTs apenas para `authenticated` e `service_role`.
-- Bucket privado `platform-exports` com policy permitindo apenas o super-admin via `auth.uid() = '302dc367-...'`.
+### 4. Auth users
 
-## 6. Segurança
+Para cada um dos 20 usuários de `auth/users.json`:
+- `supabase.auth.admin.createUser({ id, email, email_confirm: true, user_metadata, app_metadata })` preservando o `id` (essencial para FKs em `profiles.user_id`, `user_roles.user_id`, `platform_exports.created_by`).
+- O trigger `on_auth_user_created` precisa ser **temporariamente desabilitado** durante o seed para não duplicar tenants (o seed já traz `profiles` e `user_roles` reais). Habilitar de volta depois.
+- Senhas não exportáveis: usuários precisam usar "Esqueci minha senha" no primeiro acesso. Documentado.
 
-- Gate triplo: sidebar oculto, rota redireciona, Edge Function rejeita com 403.
-- Validação no backend amarrada em **email + user_id** (não só email, evita squatting se um dia o email mudar).
-- Bucket privado + URL assinada curta (1h).
-- Nenhum secret é exportado em texto plano — apenas os **nomes** dos secrets configurados, para a IA destino saber o que precisa pedir ao novo dono.
-- Senhas de auth jamais saem (impossível via API). README explicita o reset.
+### 5. `supabase/config.toml`
 
-## 7. Arquivos afetados
+Adicionar blocos `[functions.<nome>] verify_jwt = false` para as 10 funções existentes (todas validam JWT/secret internamente):
+`capture-consent, create-tenant-user, delete-tenant-user, full-system-export, generate-report, process-scoring, seed-demo-tenant, seed-test-data, send-survey-emails, send-welcome-email`.
 
-**Novos:**
-- `src/lib/superAdmin.ts`
-- `src/components/SuperAdminRoute.tsx`
-- `src/pages/Atividades.tsx`
-- `supabase/functions/full-system-export/index.ts`
-- `supabase/migrations/<ts>_platform_exports.sql`
+### 6. Secrets
 
-**Editados:**
-- `src/App.tsx` — registrar rota `/atividades`.
-- `src/components/layout/AppSidebar.tsx` — grupo "Plataforma" condicional.
-- `supabase/config.toml` — bloco `[functions.full-system-export]` com `verify_jwt = false`.
+Verificar via `fetch_secrets`. `RESEND_API_KEY` está faltando — necessário para `send-survey-emails` e `send-welcome-email`. Será pedido **só quando** o usuário for usar essas funções (não bloqueia o resto). Demais secrets do Supabase já existem.
 
-## 8. Limitações honestas
+### 7. Validação final
 
-- **Senhas de usuários auth**: Supabase não expõe hashes; usuários precisarão redefinir senha no ambiente restaurado. Documentado no README gerado.
-- **Cron jobs**: o projeto atualmente não possui cron jobs configurados (`pg_cron` não está em uso). Se forem adicionados depois, a introspecção em `cron.job` já é coberta pelo dump de schema.
-- **Código-fonte do frontend**: o `.zip` inclui `package.json` e configs como referência, mas não o repositório completo — recriação do projeto Lovable é feita clonando o repo do GitHub conectado. README orienta esse passo.
-- **Tamanho**: exportações grandes (>100MB) podem aproximar limites de Edge Function. Mitigação: gerar `.zip` em chunks para storage diretamente, sem buffer único; se exceder, particionar em `data.zip` separado.
+- Contagem por tabela bate com `manifest.json`.
+- `SELECT count(*) FROM auth.users` = 20.
+- Lista de policies/triggers/funções bate com introspecção.
+- Smoke test: abrir `/auth`, fazer reset de senha de um super admin (`mauricio@marqponto.com.br`), entrar, conferir que `/dashboard` carrega e `/atividades` aparece para o super admin.
+
+## Limitações conhecidas
+
+- **Senhas**: zero usuários conseguem entrar sem reset por email (limitação do Supabase, não do export).
+- **Binários do storage** (logos dos tenants, PDFs e HTMLs em `reports`): não estão no zip; ficarão 404 até serem repostos a partir do projeto original via `supabase storage cp` ou regerados pelas funções (`generate-report` recria HTMLs).
+- **Trigger `on_auth_user_created`**: o introspection só dump triggers de `public`; a versão recriada é fiel ao `handle_new_user` capturado e ao fluxo de signup usado em `Auth.tsx`.
+- **FKs inferidas por convenção**: como o introspection.json exportado não traz as constraints explicitamente, FKs serão inferidas pelo nome (`<x>_id → <x>.id`). Caso alguma diferença apareça no seed (violação de FK), ajusto pontualmente.
+
+## Arquivos afetados
+
+- Novo: `supabase/migrations/<ts>_restore_marqhr_schema.sql` (migração única grande, gerada a partir do introspection).
+- Editado: `supabase/config.toml` (blocos `[functions.*]`).
+- Temporário em `/tmp/`: script de seed (não vai pro repo).
+
+Nada no frontend muda.
