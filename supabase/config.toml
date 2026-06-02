@@ -1,0 +1,31 @@
+project_id = "owmloixwbirdkkuddkga"
+
+[functions.process-scoring]
+verify_jwt = false
+
+[functions.generate-report]
+verify_jwt = false
+
+[functions.seed-test-data]
+verify_jwt = false
+
+[functions.send-survey-emails]
+verify_jwt = false
+
+[functions.seed-demo-tenant]
+verify_jwt = false
+
+[functions.create-tenant-user]
+verify_jwt = false
+
+[functions.delete-tenant-user]
+verify_jwt = false
+
+[functions.capture-consent]
+verify_jwt = false
+
+[functions.send-welcome-email]
+verify_jwt = false
+
+[functions.full-system-export]
+verify_jwt = false

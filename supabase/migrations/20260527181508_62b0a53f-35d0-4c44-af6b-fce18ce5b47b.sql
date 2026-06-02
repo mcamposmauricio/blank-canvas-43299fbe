@@ -1,0 +1,1 @@
+ALTER TABLE public.survey_templates ADD COLUMN IF NOT EXISTS is_global boolean NOT NULL DEFAULT false;

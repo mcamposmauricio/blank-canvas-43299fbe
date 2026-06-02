@@ -1,0 +1,230 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* People Pulse — healthtech palette
+       Azul #0078D7 · Verde #59C414 · Branco · Cinza #F5F7FA · Grafite #2B2D2F */
+    --background: 214 28% 97%;            /* #F5F7FA */
+    --foreground: 210 3% 17%;             /* #2B2D2F */
+
+    --card: 0 0% 100%;
+    --card-foreground: 210 3% 17%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 210 3% 17%;
+
+    --primary: 207 100% 42%;              /* #0078D7 */
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 214 28% 94%;
+    --secondary-foreground: 207 100% 32%;
+
+    --muted: 214 28% 95%;
+    --muted-foreground: 215 10% 42%;
+
+    --accent: 94 81% 42%;                 /* #59C414 */
+    --accent-foreground: 0 0% 100%;
+
+    --destructive: 0 78% 52%;
+    --destructive-foreground: 0 0% 100%;
+
+    --success: 94 81% 42%;                /* #59C414 */
+    --success-foreground: 0 0% 100%;
+
+    --warning: 38 96% 52%;
+    --warning-foreground: 26 83% 14%;
+
+    --border: 214 20% 90%;
+    --input: 214 20% 90%;
+    --ring: 207 100% 42%;
+
+    --radius: 0.75rem;
+
+    /* Sidebar — light premium healthtech */
+    --sidebar-background: 0 0% 100%;
+    --sidebar-foreground: 210 3% 17%;
+    --sidebar-primary: 207 100% 42%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 214 28% 95%;
+    --sidebar-accent-foreground: 207 100% 32%;
+    --sidebar-border: 214 20% 90%;
+    --sidebar-ring: 207 100% 42%;
+  }
+
+  .dark {
+    --background: 214 73% 6%;
+    --foreground: 213 31% 91%;
+
+    --card: 214 73% 8%;
+    --card-foreground: 213 31% 91%;
+
+    --popover: 214 73% 8%;
+    --popover-foreground: 213 31% 91%;
+
+    --primary: 222 100% 56%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 214 40% 17%;
+    --secondary-foreground: 213 31% 91%;
+
+    --muted: 214 40% 17%;
+    --muted-foreground: 218 11% 65%;
+
+    --accent: 196 100% 65%;
+    --accent-foreground: 214 73% 6%;
+
+    --destructive: 0 62% 50%;
+    --destructive-foreground: 0 0% 100%;
+
+    --success: 160 84% 39%;
+    --success-foreground: 0 0% 100%;
+
+    --warning: 43 96% 56%;
+    --warning-foreground: 26 83% 14%;
+
+    --border: 214 34% 17%;
+    --input: 214 34% 17%;
+    --ring: 222 100% 56%;
+
+    --sidebar-background: 214 73% 6%;
+    --sidebar-foreground: 213 31% 91%;
+    --sidebar-primary: 196 100% 65%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 214 40% 12%;
+    --sidebar-accent-foreground: 213 31% 91%;
+    --sidebar-border: 214 34% 17%;
+    --sidebar-ring: 196 100% 65%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+}
+
+@layer utilities {
+  .glass {
+    @apply bg-card/80 backdrop-blur-xl border-border/50;
+  }
+}
+
+/* Auth panel organic animations */
+@keyframes orb-float-1 {
+  0%, 100% { transform: translateY(0) translateX(0); }
+  50% { transform: translateY(-20px) translateX(10px); }
+}
+
+@keyframes orb-float-2 {
+  0%, 100% { transform: translateY(0) translateX(0); }
+  50% { transform: translateY(15px) translateX(-15px); }
+}
+
+@keyframes orb-float-3 {
+  0%, 100% { transform: translateY(0) translateX(0); }
+  50% { transform: translateY(-10px) translateX(-20px); }
+}
+
+.orb-1 { animation: orb-float-1 8s ease-in-out infinite; }
+.orb-2 { animation: orb-float-2 7s ease-in-out infinite 1s; }
+.orb-3 { animation: orb-float-3 9s ease-in-out infinite 2s; }
+
+@keyframes dash-flow {
+  0% { stroke-dashoffset: 200; }
+  100% { stroke-dashoffset: 0; }
+}
+
+.animate-dash-flow {
+  stroke-dasharray: 8 6;
+  stroke-dashoffset: 200;
+  animation: dash-flow 2.5s ease-out forwards;
+}
+
+@keyframes node-pulse {
+  0%, 100% { transform: scale(1); opacity: 0.8; }
+  50% { transform: scale(1.08); opacity: 1; }
+}
+
+.animate-node-pulse {
+  animation: node-pulse 3s ease-in-out infinite;
+}
+
+@keyframes fade-up-in {
+  0% { opacity: 0; transform: translateY(20px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+
+.animate-fade-up-in {
+  opacity: 0;
+  animation: fade-up-in 0.8s ease-out forwards;
+}
+
+/* driver.js onboarding tour custom styles */
+.driver-popover.onboarding-tour-popover {
+  background-color: hsl(var(--card));
+  color: hsl(var(--card-foreground));
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius);
+  box-shadow: 0 10px 40px -10px hsl(var(--primary) / 0.2);
+}
+
+.driver-popover.onboarding-tour-popover .driver-popover-title {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: hsl(var(--foreground));
+}
+
+.driver-popover.onboarding-tour-popover .driver-popover-description {
+  font-size: 0.85rem;
+  color: hsl(var(--muted-foreground));
+}
+
+.driver-popover.onboarding-tour-popover .driver-popover-progress-text {
+  font-size: 0.7rem;
+  color: hsl(var(--muted-foreground));
+}
+
+.driver-popover.onboarding-tour-popover button.driver-popover-next-btn {
+  background-color: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+  border: none;
+  border-radius: calc(var(--radius) - 4px);
+  font-size: 0.8rem;
+  font-weight: 600;
+  padding: 0.4rem 1rem;
+  text-shadow: none;
+}
+
+.driver-popover.onboarding-tour-popover button.driver-popover-prev-btn {
+  background-color: hsl(var(--secondary));
+  color: hsl(var(--secondary-foreground));
+  border: none;
+  border-radius: calc(var(--radius) - 4px);
+  font-size: 0.8rem;
+  font-weight: 600;
+  padding: 0.4rem 1rem;
+  text-shadow: none;
+}
+
+.driver-popover.onboarding-tour-popover .driver-popover-arrow-side-left {
+  border-left-color: hsl(var(--card));
+}
+
+.driver-popover.onboarding-tour-popover .driver-popover-arrow-side-right {
+  border-right-color: hsl(var(--card));
+}
+
+.driver-popover.onboarding-tour-popover .driver-popover-arrow-side-top {
+  border-top-color: hsl(var(--card));
+}
+
+.driver-popover.onboarding-tour-popover .driver-popover-arrow-side-bottom {
+  border-bottom-color: hsl(var(--card));
+}
