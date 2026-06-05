@@ -1,29 +1,34 @@
-## Problema
+## Problemas
 
-Ao clicar em "Gerar convites" em uma campanha, o Supabase retorna erro porque o código (`src/pages/Campanhas.tsx`, linha 183) executa:
+1. **Erro genérico ao criar unidade/departamento/cargo**: as tabelas `org_units`, `departments` e `job_roles` no schema `public` **não possuem GRANTs** para os papéis `authenticated` e `service_role` (verificado em `information_schema.role_table_grants` → 0 linhas). RLS está OK, mas sem GRANT o PostgREST rejeita qualquer operação com erro de permissão genérico.
+2. **Tenants novos nascem vazios**: não há semente automática de estrutura organizacional, o que obriga o usuário a cadastrar tudo do zero (e hoje nem consegue, por causa do problema 1).
 
-```ts
-supabase.from("survey_invitations").upsert(invites, {
-  onConflict: "campaign_id,employee_id",
-  ignoreDuplicates: true,
-})
+## Correção (uma migration única)
+
+### a) GRANTs faltantes
+```sql
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.org_units   TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.departments TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.job_roles   TO authenticated;
+GRANT ALL ON public.org_units, public.departments, public.job_roles TO service_role;
 ```
 
-mas a tabela `survey_invitations` só possui a PRIMARY KEY em `id` — **não existe** UNIQUE em `(campaign_id, employee_id)`. Sem essa constraint, o Postgres rejeita o `ON CONFLICT` com erro `42P10: there is no unique or exclusion constraint matching the ON CONFLICT specification`.
+### b) Função + trigger para semear padrões em todo novo tenant
+Função `public.seed_default_org_structure(_tenant_id uuid)` SECURITY DEFINER, idempotente (só insere se ainda não houver linhas para o tenant):
+- `org_units`: **"Matriz"** (parent_id NULL).
+- `departments`: **"Geral"** ligado a "Matriz".
+- `job_roles`: **"Colaborador"**.
 
-Também é uma falha de integridade: nada hoje impede criar dois convites para o mesmo colaborador na mesma campanha.
+Trigger `AFTER INSERT ON public.tenants FOR EACH ROW` chama a função para `NEW.id`.
 
-## Correção
+### c) Backfill
+Rodar a função para todo tenant existente que ainda não tem nenhum org_unit/department/job_role.
 
-Migration única que:
-
-1. Remove duplicatas existentes em `survey_invitations` mantendo a linha mais antiga por `(campaign_id, employee_id)` (preserva o token já enviado, se houver).
-2. Cria `UNIQUE (campaign_id, employee_id)` em `survey_invitations`.
-
-Nenhuma alteração de código é necessária — o `upsert` atual passa a funcionar.
+## Sem mudanças de código/UI
+As telas `/estrutura` e `/colaboradores` continuam permitindo cadastro manual — só passam a (i) funcionar de fato e (ii) já encontrar registros padrão.
 
 ## Verificação após aplicar
 
-- Abrir campanha "a" → clicar em "Gerar convites" → toast "N convites gerados".
-- Clicar de novo → não duplica (ignoreDuplicates atua).
-- Conferir `select count(*), campaign_id, employee_id from survey_invitations group by 2,3 having count(*)>1` → 0 linhas.
+1. `/estrutura` → "Nova Unidade" / "Novo Departamento" / "Novo Cargo" funcionam (toast verde).
+2. Tenants existentes mostram "Matriz", "Geral", "Colaborador".
+3. Criar novo usuário pela tela de signup → entrar em `/estrutura` → padrões já presentes.
