@@ -1,37 +1,68 @@
 ## Objetivo
 
-Resetar a senha de todos os 20 usuários em `auth.users` para `123456`, permitindo login imediato sem fluxo de "esqueci minha senha".
+Executar uma bateria completa de testes funcionais no sistema restaurado, validando: autenticação, RLS, edge functions, envio de emails (Resend), geração de PDFs, fluxo de campanha (criação → convites → respostas → scoring → relatório) e exports.
 
-## Abordagem
+## Escopo dos testes
 
-Como o sandbox não tem `SUPABASE_SERVICE_ROLE_KEY` exposto no shell, e a API JS do Supabase não permite alterar senha de outro usuário a partir do cliente, vou usar uma **edge function temporária** rodando dentro do Supabase (onde `SUPABASE_SERVICE_ROLE_KEY` está disponível como `Deno.env`).
+### 1. Sanidade do banco e auth
+- Verificar contagens das 23 tabelas vs manifest (já feito no restore, revalidar).
+- Conferir que os 20 usuários em `auth.users` têm profile correspondente, role atribuída e `must_change_password=true`.
+- Testar login via API com `123456` em um usuário admin_rh e um gestor.
+- Validar RLS: query como anon não retorna dados sensíveis; query autenticada respeita tenant_id.
 
-### Passos
+### 2. Edge functions — health check
+Para cada uma das 10 functions, fazer chamada de validação (sem efeito colateral quando possível) e checar logs:
+- `capture-consent` — POST com payload mínimo válido + inválido (validar 400).
+- `create-tenant-user` — criar um usuário de teste em tenant existente.
+- `delete-tenant-user` — remover o usuário de teste criado acima.
+- `seed-demo-tenant` — apenas validar que responde (não executar se já há demo).
+- `seed-test-data` — executar criando campanha "QA Bateria" no tenant demo, com `skip_scoring=true` primeiro.
+- `process-scoring` — rodar sobre a campanha criada; validar `campaign_scores`, `group_scores`, `response_scores`, `risk_alerts`.
+- `send-survey-emails` — enviar 1 email de teste (filtrando `invitation_ids` para 1 destinatário controlado) e confirmar entrega via resposta do Resend.
+- `send-welcome-email` — disparar para 1 email de teste.
+- `generate-report` — gerar PDF de uma campanha encerrada; baixar do bucket `reports` e verificar tamanho/MIME.
+- `full-system-export` — gerar export; verificar arquivo em `platform-exports`.
 
-1. **Criar** `supabase/functions/admin-reset-passwords/index.ts`:
-   - Protegida por header `x-admin-token` com segredo aleatório que será gerado e mostrado apenas nesta execução.
-   - Lista todos os usuários via `supabase.auth.admin.listUsers()` (paginação se necessário).
-   - Para cada user: `supabase.auth.admin.updateUserById(id, { password: '123456' })`.
-   - Também atualiza `profiles.must_change_password = true` para todos, forçando troca obrigatória no primeiro login (proteção mínima — senha `123456` é insegura).
-   - Retorna contagem de senhas alteradas + lista de erros (se houver).
+### 3. Fluxo end-to-end de campanha (caminho feliz)
+1. Login como admin_rh.
+2. Criar nova campanha pequena (3 colaboradores) via UI/API.
+3. Enviar convites por email (`send-survey-emails`) para 1 email real de teste.
+4. Para os 3 convites, submeter respostas via endpoint público de `SurveyRuntime` (token).
+5. Registrar consents.
+6. Disparar `process-scoring`.
+7. Gerar relatório PDF.
+8. Validar que aparece em `/relatorios` e download funciona.
 
-2. **Registrar** em `supabase/config.toml`: `[functions.admin-reset-passwords] verify_jwt = false`.
+### 4. Validações de UI (browser automation)
+- `/auth` → login com `123456` → redirect para `/trocar-senha`.
+- Trocar senha → redirect para rota default conforme role.
+- Navegar Dashboard, Analises, Relatorios, Campanhas, Colaboradores, Configurações.
+- Testar gate de permissão: usuário `gestor` não vê `/usuarios`, `/configuracoes`.
+- Verificar que `read-only` (diretoria/auditoria) não exibe botões de criar/editar.
 
-3. **Executar** via `supabase--curl_edge_functions` com o header `x-admin-token`.
+### 5. PDF QA
+- Converter PDF gerado em imagens (`pdftoppm`) e inspecionar: textos não cortados, gráficos renderizados, sem caixas pretas, logo do tenant presente.
 
-4. **Validar** retorno (esperado: 20 senhas alteradas, 0 erros).
+### 6. Limpeza pós-testes
+- Deletar campanha "QA Bateria" e dados relacionados (respostas, scores, alerts, invitations, consents).
+- Deletar usuário de teste criado em (2).
+- Resetar `must_change_password=true` se algum teste alterou.
 
-5. **Deletar** a edge function `admin-reset-passwords` (`supabase--delete_edge_functions`) para não deixar endpoint privilegiado exposto.
+## Detalhes técnicos
 
-## Avisos importantes
+- Email real de teste: preciso de **1 endereço de email seu** (ex: seu próprio) para receber os emails de verificação do Resend, ou autorizo usar o domínio `flewpulse.com.br` enviando para `delivered@resend.dev` (sandbox) e `bounced@resend.dev` para testar suppressão.
+- Tenant alvo dos testes: o tenant "demo" existente (vou identificar via `tenants.slug` mais relevante).
+- Token admin para functions sem JWT: vou usar `SUPABASE_SERVICE_ROLE_KEY` via `supabase--curl_edge_functions`.
+- Relatório de saída: tabela markdown com **function/fluxo | resultado | latência | observações**, e o PDF gerado anexado como artifact em `/mnt/documents/`.
 
-- **Senha `123456` é extremamente fraca.** Recomendado apenas para testes/desenvolvimento. A flag `must_change_password = true` força cada usuário a trocar a senha no primeiro login (a página `/trocar-senha` já existe).
-- Após o reset, qualquer pessoa que souber o email + a senha `123456` consegue entrar. Use só se o ambiente não está exposto publicamente, ou troque imediatamente.
-- Não há reversão — senhas antigas não são recuperáveis.
+## Riscos
 
-## Arquivos afetados
+- Resend pode rejeitar envio se domínio `flewpulse.com.br` não estiver verificado — nesse caso uso `onboarding@resend.dev` como `from` para validar a função.
+- `generate-report` depende de templates/dados completos; se faltar dado, vai falhar e eu reporto.
+- Testes criam dados reais; faço cleanup ao final mas há risco residual se algum delete falhar.
 
-- Criado e deletado ao final: `supabase/functions/admin-reset-passwords/index.ts`
-- Editado temporariamente: `supabase/config.toml` (bloco da função, removido ao deletar)
+## Perguntas antes de executar
 
-Nada no frontend muda.
+1. **Email de teste**: posso usar `delivered@resend.dev` (sandbox que sempre aceita) ou você prefere fornecer seu email pessoal para validar a entrega real na caixa?
+2. **Tenant alvo**: rodar tudo no tenant "demo", ou prefere que eu use outro tenant específico?
+3. **Cleanup**: confirmar que devo deletar os dados de teste ao final, ou prefere mantê-los para inspeção manual?
