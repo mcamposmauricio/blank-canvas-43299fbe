@@ -459,7 +459,7 @@ export default function Campanhas() {
                       <Button size="sm" variant="ghost" onClick={() => handleExportCsv(c.id, c.name)} className="gap-1.5">
                         <Download className="h-3.5 w-3.5" />Exportar CSV
                       </Button>
-                      {(c.status === "draft" || c.status === "active" || c.status === "scheduled") && pendingInvites > 0 && (
+                      {c.status === "active" && pendingInvites > 0 && (
                         <Dialog open={emailConfirmOpen === c.id} onOpenChange={(v) => v ? openEmailDialog(c.id) : setEmailConfirmOpen(null)}>
                           <DialogTrigger asChild>
                             <Button size="sm" variant="ghost" className="gap-1.5">
