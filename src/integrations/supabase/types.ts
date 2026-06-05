@@ -1037,6 +1037,10 @@ export type Database = {
         }
         Returns: boolean
       }
+      seed_default_org_structure: {
+        Args: { _tenant_id: string }
+        Returns: undefined
+      }
     }
     Enums: {
       action_status: "pending" | "in_progress" | "completed"
