@@ -1,34 +1,24 @@
-## Problemas
+## Causa raiz
 
-1. **Erro genérico ao criar unidade/departamento/cargo**: as tabelas `org_units`, `departments` e `job_roles` no schema `public` **não possuem GRANTs** para os papéis `authenticated` e `service_role` (verificado em `information_schema.role_table_grants` → 0 linhas). RLS está OK, mas sem GRANT o PostgREST rejeita qualquer operação com erro de permissão genérico.
-2. **Tenants novos nascem vazios**: não há semente automática de estrutura organizacional, o que obriga o usuário a cadastrar tudo do zero (e hoje nem consegue, por causa do problema 1).
+A trigger `on_auth_user_created` em `auth.users` que invoca `public.handle_new_user()` **não está instalada** no banco. Resultado: usuários criados via signup (ex.: `teste@teste.com`) ficam **sem registro em `public.profiles`**, então `get_user_tenant_id(auth.uid())` retorna `NULL` e toda RLS de tenant (`tenant_id = get_user_tenant_id(auth.uid())`) falha — o erro "new row violates row-level security policy" aparece em qualquer insert.
 
-## Correção (uma migration única)
+Confirmado:
+- `auth.users` tem `teste@teste.com` (id `55adef1b-…`), mas `profiles` não tem linha para ele.
+- `pg_trigger` em `auth.users` (não-internos) está vazio.
+- A função `public.handle_new_user()` continua existindo e correta.
 
-### a) GRANTs faltantes
-```sql
-GRANT SELECT, INSERT, UPDATE, DELETE ON public.org_units   TO authenticated;
-GRANT SELECT, INSERT, UPDATE, DELETE ON public.departments TO authenticated;
-GRANT SELECT, INSERT, UPDATE, DELETE ON public.job_roles   TO authenticated;
-GRANT ALL ON public.org_units, public.departments, public.job_roles TO service_role;
-```
+## Correção (uma migration)
 
-### b) Função + trigger para semear padrões em todo novo tenant
-Função `public.seed_default_org_structure(_tenant_id uuid)` SECURITY DEFINER, idempotente (só insere se ainda não houver linhas para o tenant):
-- `org_units`: **"Matriz"** (parent_id NULL).
-- `departments`: **"Geral"** ligado a "Matriz".
-- `job_roles`: **"Colaborador"**.
-
-Trigger `AFTER INSERT ON public.tenants FOR EACH ROW` chama a função para `NEW.id`.
-
-### c) Backfill
-Rodar a função para todo tenant existente que ainda não tem nenhum org_unit/department/job_role.
-
-## Sem mudanças de código/UI
-As telas `/estrutura` e `/colaboradores` continuam permitindo cadastro manual — só passam a (i) funcionar de fato e (ii) já encontrar registros padrão.
+1. **Recriar a trigger**:
+   ```sql
+   CREATE TRIGGER on_auth_user_created
+   AFTER INSERT ON auth.users
+   FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
+   ```
+2. **Backfill de usuários órfãos** (sem profile): executar manualmente o mesmo bloco do `handle_new_user` para cada `auth.users` que ainda não tem profile — cria tenant a partir de `raw_user_meta_data`, insere `profiles` e `user_roles` com role `admin_rh`. O trigger `trg_seed_default_org_structure` já em vigor cuidará de popular Matriz/Geral/Colaborador para esses tenants novos.
 
 ## Verificação após aplicar
 
-1. `/estrutura` → "Nova Unidade" / "Novo Departamento" / "Novo Cargo" funcionam (toast verde).
-2. Tenants existentes mostram "Matriz", "Geral", "Colaborador".
-3. Criar novo usuário pela tela de signup → entrar em `/estrutura` → padrões já presentes.
+1. `select * from profiles where email='teste@teste.com'` → 1 linha com `tenant_id` preenchido.
+2. Logar como `teste@teste.com` em `/estrutura` → já aparecem "Matriz", "Geral", "Colaborador" e botão "Nova Unidade" cria sem erro.
+3. Criar um novo signup → profile + tenant + estrutura padrão aparecem automaticamente.
