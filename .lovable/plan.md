@@ -1,32 +1,20 @@
-## Problema
+## Objetivo
 
-Quando uma nova empresa (tenant) é criada, ela não recebe nenhum template de pesquisa, então o usuário não consegue criar campanhas. Hoje, os templates "Flew Psychosocial Index (FPI)" e "Avaliação Psicossocial v1" existem apenas vinculados ao tenant "Empresa Demo".
+O template usado por último (FPI — `a1b2c3d4-...`, com 8 dimensões e 30 itens, presente nas 5 campanhas mais recentes) já está marcado como global. Falta apenas traduzir o nome (e descrição) para português para que apareça com identidade em PT-BR para todas as empresas.
 
-A página de Campanhas já está preparada para listar templates do tenant **OU** templates globais (`is_global = true`), mas atualmente nenhum template está marcado como global.
+## Mudanças
 
-## Solução
+1. **Renomear o template global** (data update via insert tool, sem migração de schema):
+   - `name`: `Flew Psychosocial Index (FPI) v1.0` → **`Índice Psicossocial Flew (IPF) v1.0`**
+   - `description`: traduzir para → **`Instrumento padronizado de avaliação de riscos psicossociais organizacionais conforme metodologia Flew. 30 itens, 8 dimensões, escala Likert de 1 a 5.`**
 
-Tornar o template **FPI (Flew Psychosocial Index)** o template padrão global da plataforma, disponível automaticamente para qualquer tenant — novo ou existente.
+2. **Não alterar**:
+   - `is_global = true` e `is_active = true` (já configurado).
+   - Dimensões, itens, campanhas existentes e respostas — tudo continua vinculado pelo `id`, nada quebra.
+   - O outro template ("Avaliação Psicossocial v1") permanece restrito ao tenant demo.
 
-### Passos
+3. **Validação**: confirmar via query que o template aparece com o novo nome em PT-BR e segue acessível para qualquer tenant na tela de Campanhas.
 
-1. **Marcar o FPI como template global**
-   - Atualizar `survey_templates` setando `is_global = true` e `is_active = true` no registro `a1b2c3d4-...` (FPI v1.0).
-   - As dimensões e itens já estão vinculados a esse template e ficarão acessíveis via as policies "Public read" existentes.
+## Observação
 
-2. **Garantir leitura para todos os tenants**
-   - Conferir/ajustar policy de `survey_templates` para que usuários autenticados de qualquer tenant também enxerguem templates com `is_global = true` (hoje a policy "Public read" já cobre, mas vamos adicionar uma policy explícita para `authenticated` por segurança caso a Public read seja removida no futuro).
-   - Fazer o mesmo para `survey_dimensions` e `survey_items` (permitir leitura quando o template pai for global).
-
-3. **Sem mudanças no frontend**
-   - `src/pages/Campanhas.tsx` já filtra `tenant_id = X OR is_global = true`. Nenhuma alteração necessária.
-
-4. **Validação**
-   - Após a migração: confirmar via query que o tenant recém-criado consegue listar o template FPI.
-   - Testar criação de campanha na empresa nova.
-
-## Observações
-
-- O template "Avaliação Psicossocial v1" permanece exclusivo do tenant demo (não vira global).
-- Nenhuma alteração em edge functions ou dados de campanhas existentes.
-- Nada é duplicado por tenant — todos compartilham o mesmo template global (mais limpo e fácil de manter).
+Se preferir outro nome em português (ex.: "Avaliação Psicossocial Flew v1.0"), é só dizer antes de aprovar.
