@@ -124,7 +124,7 @@ Deno.serve(async (req) => {
         // Create profile for this tenant
         await adminClient
           .from("profiles")
-          .upsert({ user_id: userId, tenant_id, full_name, email, must_change_password: true }, { onConflict: "user_id" });
+          .upsert({ user_id: userId, tenant_id, full_name, email, must_change_password: false }, { onConflict: "user_id" });
 
       } else {
         return new Response(JSON.stringify({ error: createErr.message }), {
@@ -142,7 +142,7 @@ Deno.serve(async (req) => {
     // Ensure profile has correct tenant_id and force password change
     await adminClient
       .from("profiles")
-      .update({ tenant_id, full_name, must_change_password: true })
+      .update({ tenant_id, full_name, must_change_password: false })
       .eq("user_id", userId);
 
     // For gestor, assign first department

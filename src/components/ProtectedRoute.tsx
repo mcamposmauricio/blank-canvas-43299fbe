@@ -12,7 +12,7 @@ interface ProtectedRouteProps {
 
 export function ProtectedRoute({ children, allowedRoles }: ProtectedRouteProps) {
   const { user, loading } = useAuth();
-  const { roles, mustChangePassword } = useTenant();
+  const { roles } = useTenant();
   const { hasRouteAccess } = usePermissions();
   const location = useLocation();
 
@@ -26,11 +26,6 @@ export function ProtectedRoute({ children, allowedRoles }: ProtectedRouteProps) 
 
   if (!user) {
     return <Navigate to="/auth" replace />;
-  }
-
-  // Force password change on first login
-  if (mustChangePassword && location.pathname !== "/trocar-senha") {
-    return <Navigate to="/trocar-senha" replace />;
   }
 
   // If allowedRoles specified, check access

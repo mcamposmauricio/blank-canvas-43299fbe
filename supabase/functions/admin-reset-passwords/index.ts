@@ -42,7 +42,7 @@ Deno.serve(async (req) => {
 
   const { error: profErr } = await supabase
     .from("profiles")
-    .update({ must_change_password: true })
+    .update({ must_change_password: false })
     .not("user_id", "is", null);
   if (profErr) results.errors.push({ profiles_update: profErr.message });
 
