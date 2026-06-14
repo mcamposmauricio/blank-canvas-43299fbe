@@ -1,5 +1,11 @@
 project_id = "zvltrjcpecqpplbtzwhz"
 
+[functions.admin-wipe-users]
+verify_jwt = false
+
+[functions.admin-reset-passwords]
+verify_jwt = false
+
 [functions.capture-consent]
 verify_jwt = false
 
