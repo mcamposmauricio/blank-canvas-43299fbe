@@ -1,20 +1,25 @@
-## Objetivo
+## Ajuste
 
-O template usado por último (FPI — `a1b2c3d4-...`, com 8 dimensões e 30 itens, presente nas 5 campanhas mais recentes) já está marcado como global. Falta apenas traduzir o nome (e descrição) para português para que apareça com identidade em PT-BR para todas as empresas.
+Trocar qual template é o global padrão da plataforma e renomeá-lo.
 
-## Mudanças
+### Mudanças (apenas dados, sem schema)
 
-1. **Renomear o template global** (data update via insert tool, sem migração de schema):
-   - `name`: `Flew Psychosocial Index (FPI) v1.0` → **`Índice Psicossocial Flew (IPF) v1.0`**
-   - `description`: traduzir para → **`Instrumento padronizado de avaliação de riscos psicossociais organizacionais conforme metodologia Flew. 30 itens, 8 dimensões, escala Likert de 1 a 5.`**
+1. **Desmarcar FPI como global**
+   - `survey_templates` id `a1b2c3d4-...`: `is_global = false`
+   - Reverter o nome para o original (`Flew Psychosocial Index (FPI) v1.0`) e a descrição original.
 
-2. **Não alterar**:
-   - `is_global = true` e `is_active = true` (já configurado).
-   - Dimensões, itens, campanhas existentes e respostas — tudo continua vinculado pelo `id`, nada quebra.
-   - O outro template ("Avaliação Psicossocial v1") permanece restrito ao tenant demo.
+2. **Promover "Avaliação Psicossocial v1" a template global padrão**
+   - `survey_templates` id `d0000001-...`:
+     - `is_global = true`
+     - `is_active = true`
+     - `name` = **`Avaliação de Riscos Psicossociais`**
+     - `description` mantida (`Questionário baseado no modelo Demanda-Controle-Suporte com 6 dimensões psicossociais`).
 
-3. **Validação**: confirmar via query que o template aparece com o novo nome em PT-BR e segue acessível para qualquer tenant na tela de Campanhas.
+3. **Sem impacto em**:
+   - Campanhas, respostas, dimensões e itens existentes (vinculados por `id`).
+   - Frontend: `Campanhas.tsx` já lista templates do tenant **OU** globais.
 
-## Observação
+### Validação
 
-Se preferir outro nome em português (ex.: "Avaliação Psicossocial Flew v1.0"), é só dizer antes de aprovar.
+- Query confirmando que apenas `d0000001-...` está com `is_global = true` e com o novo nome.
+- Conferir na tela de Campanhas de qualquer empresa que o template aparece na lista de seleção.
