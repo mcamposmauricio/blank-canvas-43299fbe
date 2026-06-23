@@ -312,7 +312,18 @@ export default function Auth() {
                   </div>
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="password">Senha</Label>
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="password">Senha</Label>
+                    {isLogin && (
+                      <button
+                        type="button"
+                        onClick={() => { setForgotEmail(email); setForgotOpen(true); }}
+                        className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+                      >
+                        Esqueci minha senha
+                      </button>
+                    )}
+                  </div>
                   <div className="relative">
                     <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                     <Input
