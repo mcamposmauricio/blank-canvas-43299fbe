@@ -87,18 +87,26 @@ export default function Campanhas() {
     queryKey: ["invitation_stats", campaignIds],
     queryFn: async () => {
       if (!campaignIds.length) return [];
-      const { data, error } = await supabase
-        .from("survey_invitations")
-        .select("campaign_id, is_used")
-        .in("campaign_id", campaignIds);
-      if (error) throw error;
-      const statsMap: Record<string, { total: number; used: number }> = {};
-      (data || []).forEach((inv: any) => {
-        if (!statsMap[inv.campaign_id]) statsMap[inv.campaign_id] = { total: 0, used: 0 };
-        statsMap[inv.campaign_id].total++;
-        if (inv.is_used) statsMap[inv.campaign_id].used++;
-      });
-      return Object.entries(statsMap).map(([campaign_id, stats]) => ({ campaign_id, ...stats }));
+      // Contagem por campanha via head+count exato.
+      // Evita o limite padrão de 1000 linhas do PostgREST quando o tenant
+      // acumula muitos convites (ex.: 3 campanhas x 819 = 2457 linhas truncadas em 1000).
+      const results = await Promise.all(
+        campaignIds.map(async (id) => {
+          const [{ count: total }, { count: used }] = await Promise.all([
+            supabase
+              .from("survey_invitations")
+              .select("id", { count: "exact", head: true })
+              .eq("campaign_id", id),
+            supabase
+              .from("survey_invitations")
+              .select("id", { count: "exact", head: true })
+              .eq("campaign_id", id)
+              .eq("is_used", true),
+          ]);
+          return { campaign_id: id, total: total ?? 0, used: used ?? 0 };
+        })
+      );
+      return results;
     },
     enabled: campaignIds.length > 0,
   });
