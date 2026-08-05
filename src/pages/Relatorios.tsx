@@ -265,6 +265,7 @@ export default function Relatorios() {
               {campaigns.map((c: any) => {
                 const isTechGen = generatingId === `${c.id}-technical`;
                 const isExecGen = generatingId === `${c.id}-executive`;
+                const isReissuing = generatingId === `${c.id}-reissue`;
                 return (
                   <div key={c.id} className="flex items-center justify-between p-4 border border-border/60 rounded-xl hover:bg-muted/30 transition-colors">
                     <div className="flex items-center gap-3">
@@ -276,7 +277,7 @@ export default function Relatorios() {
                         <Badge variant="outline" className="ml-2 text-[10px]">{c.status === "closed" ? "Encerrada" : "Arquivada"}</Badge>
                       </div>
                     </div>
-                    <div className="flex gap-2">
+                    <div className="flex flex-wrap gap-2 justify-end">
                       <Button size="sm" variant="outline" onClick={() => generateReport.mutate({ campaignId: c.id, type: "technical", campaignName: c.name })} disabled={!!generatingId} className="gap-1.5">
                         {isTechGen ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FilePlus className="h-3.5 w-3.5" />}
                         Laudo Técnico
@@ -289,6 +290,12 @@ export default function Relatorios() {
                         {isReissuing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
                         Reprocessar e reemitir
                       </Button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
 
           </CardContent>
         </Card>
