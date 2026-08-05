@@ -831,22 +831,28 @@ export type Database = {
       survey_items: {
         Row: {
           dimension_id: string
+          has_individual_alert: boolean
           id: string
           is_inverted: boolean
+          item_number: number | null
           sort_order: number
           text: string
         }
         Insert: {
           dimension_id: string
+          has_individual_alert?: boolean
           id?: string
           is_inverted?: boolean
+          item_number?: number | null
           sort_order?: number
           text: string
         }
         Update: {
           dimension_id?: string
+          has_individual_alert?: boolean
           id?: string
           is_inverted?: boolean
+          item_number?: number | null
           sort_order?: number
           text?: string
         }
@@ -906,6 +912,7 @@ export type Database = {
           created_at: string
           description: string | null
           id: string
+          instrument_version: string | null
           is_active: boolean
           is_global: boolean
           name: string
@@ -917,6 +924,7 @@ export type Database = {
           created_at?: string
           description?: string | null
           id?: string
+          instrument_version?: string | null
           is_active?: boolean
           is_global?: boolean
           name: string
@@ -928,6 +936,7 @@ export type Database = {
           created_at?: string
           description?: string | null
           id?: string
+          instrument_version?: string | null
           is_active?: boolean
           is_global?: boolean
           name?: string

@@ -9,7 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Shield, FileCheck, History, BookOpen, Users, ChevronDown, ChevronRight, Info } from "lucide-react";
-import { FLEW_DIMENSIONS, FLEW_DISCLAIMER } from "@/lib/flew";
+import { PPI_DIMENSIONS, PPI_DISCLAIMER } from "@/lib/ppi";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -312,7 +312,7 @@ export default function Governanca() {
               <div>
                 <h4 className="font-semibold text-foreground mb-3">Dimensões Avaliadas</h4>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  {FLEW_DIMENSIONS.map((dim, idx) => (
+                  {PPI_DIMENSIONS.map((dim, idx) => (
                     <div key={dim} className="flex items-center gap-2 p-2.5 rounded-lg bg-muted/30">
                       <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/10 text-primary text-xs font-bold">
                         {idx + 1}
@@ -361,7 +361,7 @@ export default function Governanca() {
               </div>
 
               <div className="bg-warning/10 border border-warning/20 rounded-xl p-4">
-                <p className="text-xs text-warning font-medium italic">{FLEW_DISCLAIMER}</p>
+                <p className="text-xs text-warning font-medium italic">{PPI_DISCLAIMER}</p>
               </div>
             </CardContent>
           </Card>

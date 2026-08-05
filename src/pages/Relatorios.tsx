@@ -6,7 +6,7 @@ import { usePermissions } from "@/hooks/usePermissions";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { FileText, Download, FilePlus, Loader2, Eye } from "lucide-react";
+import { FileText, Download, FilePlus, Loader2, Eye, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { useState } from "react";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
@@ -136,6 +136,71 @@ export default function Relatorios() {
     },
   });
 
+  // Reprocessa o scoring da campanha e reemite o laudo, substituindo o anterior
+  const reissueReport = useMutation({
+    mutationFn: async ({ campaignId, campaignName }: { campaignId: string; campaignName: string }) => {
+      setGeneratingId(`${campaignId}-reissue`);
+
+      const scoring = await supabase.functions.invoke("process-scoring", {
+        body: { campaign_id: campaignId },
+      });
+      if (scoring.error) throw new Error("Falha ao reprocessar as respostas da campanha. Tente novamente.");
+
+      const { data: existing } = await supabase
+        .from("reports")
+        .select("id, report_type, version")
+        .eq("campaign_id", campaignId)
+        .eq("tenant_id", tenantId!);
+
+      const targets = (existing && existing.length > 0)
+        ? Array.from(new Set(existing.map((r: any) => r.report_type)))
+        : ["technical"];
+
+      for (const type of targets) {
+        const previous = (existing || []).filter((r: any) => r.report_type === type);
+        const nextVersion = previous.reduce((mx: number, r: any) => Math.max(mx, r.version || 1), 0) + 1;
+
+        const { data: reportData, error: insertErr } = await supabase.from("reports").insert({
+          campaign_id: campaignId,
+          report_type: type,
+          tenant_id: tenantId,
+          file_url: null,
+          version: nextVersion,
+          generated_at: new Date().toISOString(),
+        }).select("id").single();
+        if (insertErr) throw insertErr;
+
+        const res = await supabase.functions.invoke("generate-report", {
+          body: { campaign_id: campaignId, report_type: type, tenant_id: tenantId, report_id: reportData!.id },
+        });
+        if (res.error) {
+          await supabase.from("reports").delete().eq("id", reportData!.id);
+          throw new Error(
+            res.data?.error ||
+            "Falha na reemissão: a verificação de integridade do laudo não passou ou o conteúdo não pôde ser gerado. O laudo anterior foi mantido."
+          );
+        }
+
+        // Substitui o laudo anterior
+        for (const old of previous) {
+          await supabase.from("reports").delete().eq("id", old.id);
+        }
+        await writeAuditLog(tenantId!, user?.id, "reissue_report", "report", reportData!.id, {
+          campaign: campaignName, type, version: nextVersion,
+        });
+      }
+    },
+    onSuccess: () => {
+      setGeneratingId(null);
+      queryClient.invalidateQueries({ queryKey: ["reports"] });
+      toast.success("Respostas reprocessadas e laudo reemitido");
+    },
+    onError: (e: any) => {
+      setGeneratingId(null);
+      toast.error(e.message);
+    },
+  });
+
   const deleteReport = useMutation({
     mutationFn: async (id: string) => {
       const { error } = await supabase.from("reports").delete().eq("id", id);
@@ -147,6 +212,7 @@ export default function Relatorios() {
     },
     onError: (e: any) => toast.error(e.message),
   });
+
 
   const reportTypeLabels: Record<string, string> = {
     technical: "Laudo Técnico",
@@ -199,6 +265,7 @@ export default function Relatorios() {
               {campaigns.map((c: any) => {
                 const isTechGen = generatingId === `${c.id}-technical`;
                 const isExecGen = generatingId === `${c.id}-executive`;
+                const isReissuing = generatingId === `${c.id}-reissue`;
                 return (
                   <div key={c.id} className="flex items-center justify-between p-4 border border-border/60 rounded-xl hover:bg-muted/30 transition-colors">
                     <div className="flex items-center gap-3">
@@ -210,7 +277,7 @@ export default function Relatorios() {
                         <Badge variant="outline" className="ml-2 text-[10px]">{c.status === "closed" ? "Encerrada" : "Arquivada"}</Badge>
                       </div>
                     </div>
-                    <div className="flex gap-2">
+                    <div className="flex flex-wrap gap-2 justify-end">
                       <Button size="sm" variant="outline" onClick={() => generateReport.mutate({ campaignId: c.id, type: "technical", campaignName: c.name })} disabled={!!generatingId} className="gap-1.5">
                         {isTechGen ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FilePlus className="h-3.5 w-3.5" />}
                         Laudo Técnico
@@ -219,11 +286,17 @@ export default function Relatorios() {
                         {isExecGen ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FilePlus className="h-3.5 w-3.5" />}
                         Rel. Executivo
                       </Button>
+                      <Button size="sm" variant="secondary" onClick={() => reissueReport.mutate({ campaignId: c.id, campaignName: c.name })} disabled={!!generatingId} className="gap-1.5">
+                        {isReissuing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+                        Reprocessar e reemitir
+                      </Button>
                     </div>
                   </div>
                 );
               })}
             </div>
+
+
           </CardContent>
         </Card>
       )}

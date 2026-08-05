@@ -1,4 +1,4 @@
-import { FLEW_DISCLAIMER } from "@/lib/flew";
+import { PPI_DISCLAIMER } from "@/lib/ppi";
 import {
   LayoutDashboard,
   Building2,
@@ -174,7 +174,7 @@ export function AppSidebar() {
       <SidebarFooter className="p-4 pt-2">
         <Separator className="bg-sidebar-border/50 mb-3" />
         <p className="text-[9px] text-sidebar-foreground/35 italic leading-relaxed">
-          {FLEW_DISCLAIMER}
+          {PPI_DISCLAIMER}
         </p>
         <div className="text-[10px] text-sidebar-foreground/35 tracking-wide mt-1">
           PPI v1.0 • © 2026

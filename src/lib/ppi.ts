@@ -1,6 +1,11 @@
-// People Pulse Index (PPI) — shared utilities
+// People Pulse Index (PPI) v1.1 — utilitários compartilhados
 
-export const FLEW_DIMENSIONS = [
+export const PPI_INSTRUMENT_NAME = "People Pulse Index (PPI)";
+export const PPI_INSTRUMENT_VERSION = "1.1";
+export const PPI_INDEX_LABEL = "IGP — Índice Geral Psicossocial";
+
+// 8 dimensões oficiais do instrumento v1.1 (nome e ordem exatos)
+export const PPI_DIMENSIONS = [
   "Demandas de Trabalho",
   "Autonomia e Controle",
   "Clareza e Organização do Trabalho",
@@ -11,18 +16,18 @@ export const FLEW_DIMENSIONS = [
   "Sinais de Desgaste Relacionados ao Trabalho",
 ] as const;
 
-export const FLEW_DISCLAIMER =
+export const PPI_DISCLAIMER =
   "Este instrumento avalia fatores organizacionais de risco psicossocial. Não constitui diagnóstico clínico individual.";
 
-export type FlewRiskLevel = "low" | "attention" | "high";
+export type PpiRiskLevel = "low" | "attention" | "high";
 
-export function classifyRisk(score: number): { level: FlewRiskLevel; label: string; description: string } {
+export function classifyRisk(score: number): { level: PpiRiskLevel; label: string; description: string } {
   if (score <= 33) return { level: "low", label: "Baixo risco", description: "Condições adequadas" };
   if (score <= 66) return { level: "attention", label: "Atenção", description: "Necessita monitoramento" };
   return { level: "high", label: "Risco elevado", description: "Requer ação prioritária" };
 }
 
-export function getRiskColor(level: FlewRiskLevel): string {
+export function getRiskColor(level: PpiRiskLevel): string {
   switch (level) {
     case "low": return "bg-success";
     case "attention": return "bg-warning";
@@ -30,7 +35,7 @@ export function getRiskColor(level: FlewRiskLevel): string {
   }
 }
 
-export function getRiskBadgeClass(level: FlewRiskLevel): string {
+export function getRiskBadgeClass(level: PpiRiskLevel): string {
   switch (level) {
     case "low": return "bg-success/10 text-success border-success/20";
     case "attention": return "bg-warning/10 text-warning border-warning/20";

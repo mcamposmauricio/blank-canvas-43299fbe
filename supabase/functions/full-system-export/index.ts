@@ -323,7 +323,7 @@ forma idêntica em um novo ambiente Supabase + Lovable. Siga rigorosamente os pa
     com \`tables\` no manifest. Diferenças indicam falha de import.
 
 O sistema é uma plataforma SaaS de avaliações psicossociais (NR-1/LGPD). Preserve todas as
-regras de negócio, especialmente: anonimato com N>=7, scoring FPI v1.0, fluxo estrito de
+regras de negócio, especialmente: anonimato com N>=7, scoring PPI v1.1, fluxo estrito de
 plano de ação (Created → Started → Completed), e isolamento por tenant. Após restaurar,
 o ambiente deve estar imediatamente funcional para os usuários originais (após reset de
 senha).

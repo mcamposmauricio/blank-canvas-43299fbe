@@ -101,6 +101,26 @@ Deno.serve(async (req) => {
     const totalResponses = responsesRes.count || 0;
     const alerts = alertsRes.data || [];
     const primaryColor = tenant?.primary_color || "#1e3a5f";
+    const minGroupSize = tenant?.min_group_size ?? 7;
+
+    // Estrutura do instrumento vinda do survey_template da campanha (sem mapeamento fixo)
+    const { data: templateDimensions } = await supabase
+      .from("survey_dimensions")
+      .select("id, name, sort_order, survey_items(item_number, text, is_inverted, has_individual_alert)")
+      .eq("template_id", campaign?.template_id)
+      .order("sort_order");
+
+    const instrumentDimensions = (templateDimensions || []).map((d: any) => {
+      const items = (d.survey_items || [])
+        .slice()
+        .sort((a: any, b: any) => (a.item_number ?? 0) - (b.item_number ?? 0));
+      return {
+        name: d.name as string,
+        items,
+        itemNumbers: items.map((i: any) => i.item_number).filter((n: any) => n != null),
+      };
+    });
+    const totalItems = instrumentDimensions.reduce((s, d) => s + d.items.length, 0);
 
     // Calculate IGP
     const igp = scores.length > 0
@@ -108,59 +128,127 @@ Deno.serve(async (req) => {
       : 0;
     const igpRisk = classifyRisk(igp);
 
-    // Get AI analysis
+    // Alerta de ocorrência do item com alerta individual (item 20 — assédio/violência)
+    const harassmentAlert = alerts.find((a: any) => a.alert_type === "harassment_alert");
+    const harassmentCount = harassmentAlert ? Number(harassmentAlert.score) : 0;
+
+
+    // ── Conteúdo dinâmico das seções (13, 14 e 16) ──────────────────────
+    // Cada seção recebe seu próprio campo do JSON estruturado — sem divisão
+    // por separadores, que causava o deslocamento entre as seções.
     let aiAnalysis = "";
     let aiRecommendations = "";
     let aiConclusion = "";
-    try {
-      const lovableApiKey = Deno.env.get("LOVABLE_API_KEY");
-      if (lovableApiKey) {
-        const scoresText = scores.map((s: any) => `${s.survey_dimensions?.name}: ${Number(s.avg_score).toFixed(1)} (${classifyRisk(Number(s.avg_score)).label})`).join("\n");
-        const criticalDims = scores.filter((s: any) => Number(s.avg_score) >= 67).map((s: any) => s.survey_dimensions?.name).join(", ");
 
-        const prompt = report_type === "technical"
-          ? `Você é um especialista em saúde ocupacional e riscos psicossociais. Gere uma análise técnica para um laudo de avaliação psicossocial organizacional conforme NR-1/GRO.
+    const lovableApiKey = Deno.env.get("LOVABLE_API_KEY");
+    if (!lovableApiKey) throw new Error("LOVABLE_API_KEY não configurada — não é possível gerar o conteúdo do laudo.");
 
-Dados:
-- IGP (Índice Geral Psicossocial): ${igp.toFixed(1)}/100 — ${igpRisk.label}
-- Total de respondentes: ${totalResponses}
-- Dimensões e scores:
+    const scoresText = scores
+      .map((s: any) => `${s.survey_dimensions?.name}: ${Number(s.avg_score).toFixed(1)} (${classifyRisk(Number(s.avg_score)).label})`)
+      .join("\n");
+    const criticalDims = scores
+      .filter((s: any) => Number(s.avg_score) >= 67)
+      .map((s: any) => s.survey_dimensions?.name)
+      .join(", ");
+    const dimensionNames = instrumentDimensions.map((d) => d.name).join("; ");
+
+    const contextoComum = `Instrumento: People Pulse Index (PPI) v1.1 (${totalItems} itens, ${instrumentDimensions.length} dimensões).
+Empresa: ${tenant?.name || "—"}
+Campanha: ${campaign?.name || "—"}
+IGP (Índice Geral Psicossocial): ${igp.toFixed(1)}/100 — ${igpRisk.label}
+Total de respondentes válidos: ${totalResponses}
+Dimensões do instrumento (use exatamente estes nomes): ${dimensionNames}
+Scores por dimensão:
 ${scoresText}
-${criticalDims ? `- Dimensões críticas (≥67): ${criticalDims}` : "- Nenhuma dimensão em risco elevado"}
+${criticalDims ? `Dimensões em risco elevado (≥67): ${criticalDims}` : "Nenhuma dimensão em risco elevado"}
+${harassmentCount > 0 ? `Alerta de ocorrência (item 20 — tratamento desrespeitoso/humilhante, assédio moral ou sexual): ${harassmentCount} resposta(s) com valor 4 ou 5, de forma anônima.` : "Sem ocorrências registradas no item 20."}
+Critério de anonimato aplicado: grupos com N ≥ ${minGroupSize}.
 
-Gere TRÊS seções separadas por "---":
-1. ANÁLISE INTERPRETATIVA (máx 300 palavras): análise técnica de cada dimensão, destacando padrões e correlações
-2. RECOMENDAÇÕES TÉCNICAS (máx 200 palavras): ações concretas priorizadas por nível de risco
-3. CONCLUSÃO TÉCNICA (máx 150 palavras): síntese técnica com parecer sobre nível de risco organizacional
+Regras de escrita obrigatórias:
+- Português do Brasil, linguagem técnica não-clínica, foco em fatores organizacionais.
+- NUNCA use placeholders ou marcadores entre colchetes (ex.: [Nome da Empresa], [Data]); use os dados reais fornecidos.
+- Não invente dimensões: use somente os nomes listados acima.
+- Não escreva títulos de seção nem numeração de seção; devolva apenas o texto corrido de cada campo.`;
 
-Use linguagem técnica não-clínica. Foque em fatores organizacionais. Em português.`
-          : `Gere um sumário executivo de avaliação psicossocial organizacional para diretoria. IGP: ${igp.toFixed(1)}/100 (${igpRisk.label}). Dimensões:\n${scoresText}\nDestaque top 3 riscos e recomendações estratégicas. Máximo 200 palavras. Em português.`;
-
-        const aiRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-          method: "POST",
-          headers: {
-            "Authorization": `Bearer ${lovableApiKey}`,
-            "Content-Type": "application/json",
+    const schema = report_type === "technical"
+      ? {
+          type: "object",
+          additionalProperties: false,
+          required: ["analise", "recomendacoes", "conclusao"],
+          properties: {
+            analise: { type: "string", description: "Análise interpretativa do IGP e de cada dimensão (máx. 300 palavras)." },
+            recomendacoes: { type: "string", description: "Recomendações técnicas priorizadas por nível de risco (máx. 200 palavras)." },
+            conclusao: { type: "string", description: "Conclusão técnica: síntese do IGP, das dimensões em risco e parecer final (máx. 150 palavras)." },
           },
-          body: JSON.stringify({
-            model: "google/gemini-2.5-flash",
-            messages: [{ role: "user", content: prompt }],
-            max_tokens: 1500,
-          }),
-        });
-        const aiData = await aiRes.json();
-        const content = aiData.choices?.[0]?.message?.content || "";
+        }
+      : {
+          type: "object",
+          additionalProperties: false,
+          required: ["analise"],
+          properties: {
+            analise: { type: "string", description: "Sumário executivo para a diretoria, com top 3 riscos e recomendações estratégicas (máx. 200 palavras)." },
+          },
+        };
 
-        if (report_type === "technical") {
-          const sections = content.split("---").map((s: string) => s.trim());
-          aiAnalysis = sections[0] || "";
-          aiRecommendations = sections[1] || "";
-          aiConclusion = sections[2] || "";
-        } else {
-          aiAnalysis = content;
+    const instrucao = report_type === "technical"
+      ? `Você é especialista em saúde ocupacional e riscos psicossociais. Produza o conteúdo das seções finais de um laudo técnico conforme NR-1/GRO, preenchendo os três campos do JSON: "analise" (Análise Interpretativa), "recomendacoes" (Recomendações Técnicas) e "conclusao" (Conclusão Técnica). Cada campo deve conter exclusivamente o conteúdo da sua própria seção.${harassmentCount > 0 ? " Na análise e nas recomendações, registre a ocorrência do item 20 apenas com a contagem anônima e recomende apuração pelos canais internos adequados." : ""}`
+      : `Você é especialista em saúde ocupacional. Produza o sumário executivo de uma avaliação psicossocial organizacional no campo "analise".`;
+
+    const aiRes = await fetch("https://ai.gateway.lovable.dev/v1/responses", {
+      method: "POST",
+      headers: {
+        "Lovable-API-Key": lovableApiKey,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "openai/gpt-5.6-sol",
+        input: [
+          { role: "system", content: instrucao },
+          { role: "user", content: contextoComum },
+        ],
+        text: {
+          format: {
+            type: "json_schema",
+            name: "conteudo_laudo",
+            strict: true,
+            schema,
+          },
+        },
+      }),
+    });
+
+    if (!aiRes.ok) {
+      const detail = await aiRes.text();
+      if (aiRes.status === 429) throw new Error("Limite de requisições de IA atingido. Tente novamente em alguns minutos.");
+      if (aiRes.status === 402) throw new Error("Créditos de IA esgotados. Adicione créditos para gerar o laudo.");
+      throw new Error(`Falha ao gerar o conteúdo do laudo (IA): ${detail.slice(0, 300)}`);
+    }
+
+    const aiData = await aiRes.json();
+    let rawText: string = aiData.output_text || "";
+    if (!rawText && Array.isArray(aiData.output)) {
+      for (const out of aiData.output) {
+        for (const c of out?.content || []) {
+          if (typeof c?.text === "string") rawText += c.text;
         }
       }
-    } catch { /* AI is optional */ }
+    }
+
+    let parsed: any = {};
+    try {
+      parsed = JSON.parse(rawText);
+    } catch {
+      throw new Error("A IA não devolveu um conteúdo válido para as seções do laudo. Tente gerar novamente.");
+    }
+
+    aiAnalysis = (parsed.analise || "").trim();
+    aiRecommendations = (parsed.recomendacoes || "").trim();
+    aiConclusion = (parsed.conclusao || "").trim();
+
+    if (!aiAnalysis || (report_type === "technical" && (!aiRecommendations || !aiConclusion))) {
+      throw new Error("Conteúdo das seções finais incompleto. O laudo não foi emitido — tente gerar novamente.");
+    }
+
 
     // Group scores by department
     const deptGroups: Record<string, any[]> = {};
@@ -182,12 +270,32 @@ Use linguagem técnica não-clínica. Foque em fatores organizacionais. Em portu
     const date = new Date().toLocaleDateString("pt-BR");
     const title = report_type === "technical" ? "Laudo Técnico de Avaliação de Riscos Psicossociais" : "Relatório Executivo";
 
-    // Build dimension rows
-    const dimensionRows = scores.map((s: any) => {
+    // Build dimension rows — as dimensões vêm do survey_template (nome e ordem)
+    const scoreByDimName = new Map<string, any>();
+    for (const s of scores) {
+      const nm = s.survey_dimensions?.name;
+      if (nm) scoreByDimName.set(nm, s);
+    }
+    const orderedDimensions = instrumentDimensions.length > 0
+      ? instrumentDimensions.map((d) => ({ name: d.name, score: scoreByDimName.get(d.name) }))
+      : scores.map((s: any) => ({ name: s.survey_dimensions?.name || "—", score: s }));
+
+    const dimensionRows = orderedDimensions.map(({ name, score: s }) => {
+      if (!s) {
+        return `<tr>
+        <td style="padding:10px;border:1px solid #ddd;">${name}</td>
+        <td style="padding:10px;border:1px solid #ddd;text-align:center;">—</td>
+        <td style="padding:10px;border:1px solid #ddd;text-align:center;">Sem dados suficientes</td>
+        <td style="padding:10px;border:1px solid #ddd;text-align:center;">—</td>
+        <td style="padding:10px;border:1px solid #ddd;text-align:center;">—</td>
+        <td style="padding:10px;border:1px solid #ddd;text-align:center;">—</td>
+        <td style="padding:10px;border:1px solid #ddd;text-align:center;">0</td>
+      </tr>`;
+      }
       const score = Number(s.avg_score);
       const risk = classifyRisk(score);
       return `<tr>
-        <td style="padding:10px;border:1px solid #ddd;">${s.survey_dimensions?.name || "—"}</td>
+        <td style="padding:10px;border:1px solid #ddd;">${name}</td>
         <td style="padding:10px;border:1px solid #ddd;text-align:center;font-weight:bold;">${score.toFixed(1)}</td>
         <td style="padding:10px;border:1px solid #ddd;text-align:center;">
           <span style="background:${risk.color}20;color:${risk.color};padding:3px 10px;border-radius:12px;font-size:12px;font-weight:600;">${risk.label}</span>
@@ -198,6 +306,7 @@ Use linguagem técnica não-clínica. Foque em fatores organizacionais. Em portu
         <td style="padding:10px;border:1px solid #ddd;text-align:center;">${s.responses_count}</td>
       </tr>`;
     }).join("");
+
 
     // Group section
     let groupSection = "";
@@ -230,14 +339,15 @@ Use linguagem técnica não-clínica. Foque em fatores organizacionais. Em portu
             </tr></thead>
             <tbody>${groupRows}</tbody>
           </table>
-          <p class="note">Apenas grupos com N ≥ ${tenant?.min_group_size || 7} respondentes são exibidos, garantindo o anonimato.</p>
+          <p class="note">Apenas grupos com N ≥ ${minGroupSize} respondentes são exibidos, garantindo o anonimato.</p>
         </div>`;
     }
 
     // Critical factors
     let criticalSection = "";
-    if (alerts.length > 0) {
-      const alertRows = alerts.map((a: any) => `
+    const dimensionAlerts = alerts.filter((a: any) => a.alert_type !== "harassment_alert");
+    if (dimensionAlerts.length > 0 || harassmentCount > 0) {
+      const alertRows = dimensionAlerts.map((a: any) => `
         <tr>
           <td style="padding:8px;border:1px solid #ddd;">${a.dimension_name}</td>
           <td style="padding:8px;border:1px solid #ddd;text-align:center;font-weight:bold;color:#ef4444;">${Number(a.score).toFixed(1)}</td>
@@ -247,6 +357,7 @@ Use linguagem técnica não-clínica. Foque em fatores organizacionais. Em portu
       criticalSection = `
         <div class="section alert-box">
           <h2>12. Fatores Críticos Identificados</h2>
+          ${dimensionAlerts.length > 0 ? `
           <p>As seguintes dimensões apresentaram score ≥ 67, indicando risco elevado que requer intervenção:</p>
           <table>
             <thead><tr style="background:#ef4444;color:white;">
@@ -255,9 +366,14 @@ Use linguagem técnica não-clínica. Foque em fatores organizacionais. Em portu
               <th style="padding:8px;">Prioridade</th>
             </tr></thead>
             <tbody>${alertRows}</tbody>
-          </table>
+          </table>` : "<p>Nenhuma dimensão apresentou score ≥ 67 nesta campanha.</p>"}
+          ${harassmentCount > 0 ? `
+          <p style="margin-top:18px;"><strong>Alerta de ocorrência — item 20 (tratamento desrespeitoso, humilhante ou hostil, incluindo assédio moral ou sexual)</strong></p>
+          <p><strong>${harassmentCount}</strong> resposta(s) registraram valor 4 ou 5 nesse item, independentemente da média da dimensão "${harassmentAlert?.dimension_name || "Relações Sociais no Trabalho"}". O registro é anônimo e não permite identificar respondentes.</p>
+          <p>Recomenda-se apuração pelos canais internos adequados da empresa (canal de denúncias, comitê de ética, área de compliance ou RH), com garantia de sigilo e vedação a retaliação.</p>` : ""}
         </div>`;
     }
+
 
     const html = `<!DOCTYPE html>
 <html lang="pt-BR">
@@ -302,7 +418,7 @@ Use linguagem técnica não-clínica. Foque em fatores organizacionais. Em portu
   <!-- 1. CAPA -->
   <div class="cover">
     <h1>${title}</h1>
-    <p class="subtitle">Metodologia People Pulse Index (PPI) v1.0</p>
+    <p class="subtitle">Metodologia People Pulse Index (PPI) v1.1</p>
     <p class="subtitle">${tenant?.name || "—"}</p>
     <p style="color:#999;margin-top:20px;">Documento gerado em ${date}</p>
   </div>
@@ -339,11 +455,13 @@ Use linguagem técnica não-clínica. Foque em fatores organizacionais. Em portu
   <div class="section">
     <h2>5. Fundamentação Metodológica — PPI</h2>
     <div class="methodology">
-      <p><strong>People Pulse Index (PPI) v1.0</strong></p>
-      <p>Instrumento padronizado de avaliação de riscos psicossociais organizacionais composto por 30 itens distribuídos em 8 dimensões, baseado no modelo Demanda-Controle-Suporte complementado com dimensões de Reconhecimento, Equilíbrio Vida-Trabalho e Sinais de Desgaste.</p>
+      <p><strong>People Pulse Index (PPI) v1.1</strong></p>
+      <p>Instrumento padronizado de avaliação de riscos psicossociais organizacionais composto por ${totalItems} itens distribuídos em ${instrumentDimensions.length} dimensões, baseado no modelo Demanda-Controle-Suporte complementado com dimensões de Reconhecimento, Trabalho e Vida Pessoal e Sinais de Desgaste.</p>
       <p><strong>Escala:</strong> Likert de 5 pontos (1 = Nunca/Quase nunca a 5 = Sempre)</p>
       <p><strong>Itens invertidos:</strong> Tratados com fórmula (6 − resposta) para uniformizar a direção do risco</p>
       <p><strong>Score por dimensão:</strong> Média × 20 (range 20-100)</p>
+      <p><strong>IGP — Índice Geral Psicossocial:</strong> média dos scores das dimensões avaliadas, na mesma escala de 20 a 100</p>
+      <p><strong>Anonimato:</strong> resultados por grupo são divulgados apenas quando N ≥ ${minGroupSize} respondentes</p>
       <p><strong>Classificação de risco:</strong></p>
       <ul>
         <li>0–33: <span style="color:#22c55e;font-weight:bold;">Baixo risco</span> — Condições adequadas</li>
@@ -351,7 +469,34 @@ Use linguagem técnica não-clínica. Foque em fatores organizacionais. Em portu
         <li>67–100: <span style="color:#ef4444;font-weight:bold;">Risco elevado</span> — Requer ação prioritária</li>
       </ul>
     </div>
+    <h3 style="margin-top:22px;">5.1 Dimensões avaliadas</h3>
+    <ul>
+      ${instrumentDimensions.map((d) => `<li><strong>${d.name}</strong> — ${d.items.length} ${d.items.length === 1 ? "item" : "itens"}${d.itemNumbers.length ? ` (itens ${d.itemNumbers.join(", ")})` : ""}</li>`).join("")}
+    </ul>
+    <h3 style="margin-top:22px;">5.2 Matriz de rastreabilidade — itens × fatores de risco</h3>
+    <table>
+      <thead><tr style="background:${primaryColor};color:white;">
+        <th style="padding:8px;">Item</th>
+        <th style="padding:8px;">Enunciado</th>
+        <th style="padding:8px;">Dimensão</th>
+        <th style="padding:8px;">Fator de risco psicossocial</th>
+      </tr></thead>
+      <tbody>
+        ${instrumentDimensions.flatMap((d) => d.items.map((it: any) => {
+          const num = it.item_number ?? "—";
+          const fator = num === 11 ? "Gestão de mudanças organizacionais" : d.name;
+          return `<tr>
+            <td style="padding:8px;border:1px solid #ddd;text-align:center;">${num}</td>
+            <td style="padding:8px;border:1px solid #ddd;">${it.text}${it.is_inverted ? " <em>(invertido)</em>" : ""}</td>
+            <td style="padding:8px;border:1px solid #ddd;">${d.name}</td>
+            <td style="padding:8px;border:1px solid #ddd;">${fator}</td>
+          </tr>`;
+        })).join("")}
+      </tbody>
+    </table>
+    <p class="note">O item 11 é rastreado explicitamente ao fator "Gestão de mudanças organizacionais", ainda que estatisticamente componha a dimensão indicada.</p>
   </div>
+
 
   <!-- 6. PROCEDIMENTOS DE COLETA -->
   <div class="section">
@@ -365,8 +510,9 @@ Use linguagem técnica não-clínica. Foque em fatores organizacionais. Em portu
     <div class="info-grid">
       <div class="info-item"><label>Respostas válidas</label><span>${totalResponses}</span></div>
       <div class="info-item"><label>Critério de validação</label><span>≥ 90% do questionário respondido</span></div>
-      <div class="info-item"><label>Anonimato</label><span>Grupos com N ≥ ${tenant?.min_group_size || 7}</span></div>
-      <div class="info-item"><label>Dimensões avaliadas</label><span>${scores.length}</span></div>
+      <div class="info-item"><label>Anonimato</label><span>Grupos com N ≥ ${minGroupSize}</span></div>
+      <div class="info-item"><label>Dimensões avaliadas</label><span>${orderedDimensions.length}</span></div>
+
     </div>
   </div>
 
@@ -411,37 +557,37 @@ Use linguagem técnica não-clínica. Foque em fatores organizacionais. Em portu
 
   ${criticalSection}
 
-  ${aiAnalysis ? `
-  <!-- 13. ANÁLISE INTERPRETATIVA / RECOMENDAÇÕES -->
+  <!-- 13. ANÁLISE INTERPRETATIVA -->
   <div class="section">
     <h2>${report_type === "technical" ? "13. Análise Interpretativa" : "Sumário Executivo"}</h2>
     <div class="summary">${aiAnalysis.replace(/\n/g, "<br>")}</div>
-  </div>` : ""}
+  </div>
 
-  ${report_type === "technical" && aiRecommendations ? `
+  ${report_type === "technical" ? `
+  <!-- 14. RECOMENDAÇÕES TÉCNICAS -->
   <div class="section">
     <h2>14. Recomendações Técnicas</h2>
     <div class="summary">${aiRecommendations.replace(/\n/g, "<br>")}</div>
-  </div>` : ""}
+  </div>
 
-  ${report_type === "technical" ? `
   <!-- 15. LIMITAÇÕES -->
   <div class="section">
     <h2>15. Limitações do Estudo</h2>
     <ul>
       <li>Os resultados refletem percepções autorrelatadas dos participantes em um momento específico.</li>
       <li>A avaliação é organizacional e não permite inferências individuais.</li>
-      <li>Grupos com menos de ${tenant?.min_group_size || 7} respondentes foram suprimidos para garantir anonimato.</li>
+      <li>Grupos com menos de ${minGroupSize} respondentes foram suprimidos para garantir anonimato.</li>
       <li>Respondentes que completaram menos de 90% do questionário foram excluídos da análise.</li>
       <li>O instrumento avalia fatores organizacionais e não constitui avaliação clínica de saúde mental.</li>
     </ul>
-  </div>` : ""}
+  </div>
 
-  ${report_type === "technical" && aiConclusion ? `
+  <!-- 16. CONCLUSÃO TÉCNICA -->
   <div class="section">
     <h2>16. Conclusão Técnica</h2>
     <div class="summary">${aiConclusion.replace(/\n/g, "<br>")}</div>
   </div>` : ""}
+
 
   <!-- DISCLAIMER -->
   <div class="disclaimer">
@@ -452,11 +598,42 @@ Use linguagem técnica não-clínica. Foque em fatores organizacionais. Em portu
   <!-- FOOTER -->
   <div class="footer">
     <p>Documento gerado automaticamente em ${date} — ${tenant?.name || ""}</p>
-    <p>Metodologia: People Pulse Index (PPI) v1.0 | Classificação: NR-1/GRO</p>
+    <p>Metodologia: People Pulse Index (PPI) v1.1 | Classificação: NR-1/GRO</p>
     <p style="margin-top:10px;font-size:10px;">Este documento é confidencial e destinado exclusivamente à organização avaliada.</p>
   </div>
 </body>
 </html>`;
+
+    // ── Verificação de integridade (obrigatória em emissão e reemissão) ──
+    const expectedSections = report_type === "technical"
+      ? [
+          "2. Identificação",
+          "3. Objetivo",
+          "4. Fundamentação Legal",
+          "5. Fundamentação Metodológica",
+          "6. Procedimentos de Coleta",
+          "7. Caracterização da Amostra",
+          "8. Critérios de Análise",
+          "9. Resultados Consolidados",
+          "10. Resultados por Dimensão",
+          "13. Análise Interpretativa",
+          "14. Recomendações Técnicas",
+          "15. Limitações do Estudo",
+          "16. Conclusão Técnica",
+        ]
+      : ["Sumário Executivo", "9. Resultados Consolidados", "10. Resultados por Dimensão"];
+
+    const missingSections = expectedSections.filter((s) => !html.includes(s));
+    const placeholders = [...html.matchAll(/\[[^\]\n<>]{2,60}\]/g)].map((m) => m[0]);
+
+    if (missingSections.length > 0 || placeholders.length > 0) {
+      await supabase.from("reports").delete().eq("id", report_id);
+      const problemas = [
+        missingSections.length ? `seções ausentes: ${missingSections.join(", ")}` : "",
+        placeholders.length ? `placeholders não preenchidos: ${[...new Set(placeholders)].join(", ")}` : "",
+      ].filter(Boolean).join(" | ");
+      throw new Error(`Verificação de integridade do laudo falhou (${problemas}). O laudo não foi gravado — tente gerar novamente.`);
+    }
 
     // Store HTML
     const fileName = `${campaign_id}/${report_type}_v${Date.now()}.html`;
@@ -464,6 +641,7 @@ Use linguagem técnica não-clínica. Foque em fatores organizacionais. Em portu
       .from("reports")
       .upload(fileName, new Blob([html], { type: "text/html" }), { contentType: "text/html", upsert: true });
     if (uploadErr) throw uploadErr;
+
 
     const { data: urlData } = await supabase.storage
       .from("reports")
