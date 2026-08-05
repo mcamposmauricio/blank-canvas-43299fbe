@@ -285,11 +285,11 @@ export default function Relatorios() {
                         {isExecGen ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FilePlus className="h-3.5 w-3.5" />}
                         Rel. Executivo
                       </Button>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+                      <Button size="sm" variant="secondary" onClick={() => reissueReport.mutate({ campaignId: c.id, campaignName: c.name })} disabled={!!generatingId} className="gap-1.5">
+                        {isReissuing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+                        Reprocessar e reemitir
+                      </Button>
+
           </CardContent>
         </Card>
       )}
