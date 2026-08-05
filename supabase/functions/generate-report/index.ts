@@ -133,59 +133,122 @@ Deno.serve(async (req) => {
     const harassmentCount = harassmentAlert ? Number(harassmentAlert.score) : 0;
 
 
-    // Get AI analysis
+    // ── Conteúdo dinâmico das seções (13, 14 e 16) ──────────────────────
+    // Cada seção recebe seu próprio campo do JSON estruturado — sem divisão
+    // por separadores, que causava o deslocamento entre as seções.
     let aiAnalysis = "";
     let aiRecommendations = "";
     let aiConclusion = "";
-    try {
-      const lovableApiKey = Deno.env.get("LOVABLE_API_KEY");
-      if (lovableApiKey) {
-        const scoresText = scores.map((s: any) => `${s.survey_dimensions?.name}: ${Number(s.avg_score).toFixed(1)} (${classifyRisk(Number(s.avg_score)).label})`).join("\n");
-        const criticalDims = scores.filter((s: any) => Number(s.avg_score) >= 67).map((s: any) => s.survey_dimensions?.name).join(", ");
 
-        const prompt = report_type === "technical"
-          ? `Você é um especialista em saúde ocupacional e riscos psicossociais. Gere uma análise técnica para um laudo de avaliação psicossocial organizacional conforme NR-1/GRO.
+    const lovableApiKey = Deno.env.get("LOVABLE_API_KEY");
+    if (!lovableApiKey) throw new Error("LOVABLE_API_KEY não configurada — não é possível gerar o conteúdo do laudo.");
 
-Dados:
-- IGP (Índice Geral Psicossocial): ${igp.toFixed(1)}/100 — ${igpRisk.label}
-- Total de respondentes: ${totalResponses}
-- Dimensões e scores:
+    const scoresText = scores
+      .map((s: any) => `${s.survey_dimensions?.name}: ${Number(s.avg_score).toFixed(1)} (${classifyRisk(Number(s.avg_score)).label})`)
+      .join("\n");
+    const criticalDims = scores
+      .filter((s: any) => Number(s.avg_score) >= 67)
+      .map((s: any) => s.survey_dimensions?.name)
+      .join(", ");
+    const dimensionNames = instrumentDimensions.map((d) => d.name).join("; ");
+
+    const contextoComum = `Instrumento: People Pulse Index (PPI) v1.1 (${totalItems} itens, ${instrumentDimensions.length} dimensões).
+Empresa: ${tenant?.name || "—"}
+Campanha: ${campaign?.name || "—"}
+IGP (Índice Geral Psicossocial): ${igp.toFixed(1)}/100 — ${igpRisk.label}
+Total de respondentes válidos: ${totalResponses}
+Dimensões do instrumento (use exatamente estes nomes): ${dimensionNames}
+Scores por dimensão:
 ${scoresText}
-${criticalDims ? `- Dimensões críticas (≥67): ${criticalDims}` : "- Nenhuma dimensão em risco elevado"}
+${criticalDims ? `Dimensões em risco elevado (≥67): ${criticalDims}` : "Nenhuma dimensão em risco elevado"}
+${harassmentCount > 0 ? `Alerta de ocorrência (item 20 — tratamento desrespeitoso/humilhante, assédio moral ou sexual): ${harassmentCount} resposta(s) com valor 4 ou 5, de forma anônima.` : "Sem ocorrências registradas no item 20."}
+Critério de anonimato aplicado: grupos com N ≥ ${minGroupSize}.
 
-Gere TRÊS seções separadas por "---":
-1. ANÁLISE INTERPRETATIVA (máx 300 palavras): análise técnica de cada dimensão, destacando padrões e correlações
-2. RECOMENDAÇÕES TÉCNICAS (máx 200 palavras): ações concretas priorizadas por nível de risco
-3. CONCLUSÃO TÉCNICA (máx 150 palavras): síntese técnica com parecer sobre nível de risco organizacional
+Regras de escrita obrigatórias:
+- Português do Brasil, linguagem técnica não-clínica, foco em fatores organizacionais.
+- NUNCA use placeholders ou marcadores entre colchetes (ex.: [Nome da Empresa], [Data]); use os dados reais fornecidos.
+- Não invente dimensões: use somente os nomes listados acima.
+- Não escreva títulos de seção nem numeração de seção; devolva apenas o texto corrido de cada campo.`;
 
-Use linguagem técnica não-clínica. Foque em fatores organizacionais. Em português.`
-          : `Gere um sumário executivo de avaliação psicossocial organizacional para diretoria. IGP: ${igp.toFixed(1)}/100 (${igpRisk.label}). Dimensões:\n${scoresText}\nDestaque top 3 riscos e recomendações estratégicas. Máximo 200 palavras. Em português.`;
-
-        const aiRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-          method: "POST",
-          headers: {
-            "Authorization": `Bearer ${lovableApiKey}`,
-            "Content-Type": "application/json",
+    const schema = report_type === "technical"
+      ? {
+          type: "object",
+          additionalProperties: false,
+          required: ["analise", "recomendacoes", "conclusao"],
+          properties: {
+            analise: { type: "string", description: "Análise interpretativa do IGP e de cada dimensão (máx. 300 palavras)." },
+            recomendacoes: { type: "string", description: "Recomendações técnicas priorizadas por nível de risco (máx. 200 palavras)." },
+            conclusao: { type: "string", description: "Conclusão técnica: síntese do IGP, das dimensões em risco e parecer final (máx. 150 palavras)." },
           },
-          body: JSON.stringify({
-            model: "google/gemini-2.5-flash",
-            messages: [{ role: "user", content: prompt }],
-            max_tokens: 1500,
-          }),
-        });
-        const aiData = await aiRes.json();
-        const content = aiData.choices?.[0]?.message?.content || "";
+        }
+      : {
+          type: "object",
+          additionalProperties: false,
+          required: ["analise"],
+          properties: {
+            analise: { type: "string", description: "Sumário executivo para a diretoria, com top 3 riscos e recomendações estratégicas (máx. 200 palavras)." },
+          },
+        };
 
-        if (report_type === "technical") {
-          const sections = content.split("---").map((s: string) => s.trim());
-          aiAnalysis = sections[0] || "";
-          aiRecommendations = sections[1] || "";
-          aiConclusion = sections[2] || "";
-        } else {
-          aiAnalysis = content;
+    const instrucao = report_type === "technical"
+      ? `Você é especialista em saúde ocupacional e riscos psicossociais. Produza o conteúdo das seções finais de um laudo técnico conforme NR-1/GRO, preenchendo os três campos do JSON: "analise" (Análise Interpretativa), "recomendacoes" (Recomendações Técnicas) e "conclusao" (Conclusão Técnica). Cada campo deve conter exclusivamente o conteúdo da sua própria seção.${harassmentCount > 0 ? " Na análise e nas recomendações, registre a ocorrência do item 20 apenas com a contagem anônima e recomende apuração pelos canais internos adequados." : ""}`
+      : `Você é especialista em saúde ocupacional. Produza o sumário executivo de uma avaliação psicossocial organizacional no campo "analise".`;
+
+    const aiRes = await fetch("https://ai.gateway.lovable.dev/v1/responses", {
+      method: "POST",
+      headers: {
+        "Lovable-API-Key": lovableApiKey,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "openai/gpt-5.6-sol",
+        input: [
+          { role: "system", content: instrucao },
+          { role: "user", content: contextoComum },
+        ],
+        text: {
+          format: {
+            type: "json_schema",
+            name: "conteudo_laudo",
+            strict: true,
+            schema,
+          },
+        },
+      }),
+    });
+
+    if (!aiRes.ok) {
+      const detail = await aiRes.text();
+      if (aiRes.status === 429) throw new Error("Limite de requisições de IA atingido. Tente novamente em alguns minutos.");
+      if (aiRes.status === 402) throw new Error("Créditos de IA esgotados. Adicione créditos para gerar o laudo.");
+      throw new Error(`Falha ao gerar o conteúdo do laudo (IA): ${detail.slice(0, 300)}`);
+    }
+
+    const aiData = await aiRes.json();
+    let rawText: string = aiData.output_text || "";
+    if (!rawText && Array.isArray(aiData.output)) {
+      for (const out of aiData.output) {
+        for (const c of out?.content || []) {
+          if (typeof c?.text === "string") rawText += c.text;
         }
       }
-    } catch { /* AI is optional */ }
+    }
+
+    let parsed: any = {};
+    try {
+      parsed = JSON.parse(rawText);
+    } catch {
+      throw new Error("A IA não devolveu um conteúdo válido para as seções do laudo. Tente gerar novamente.");
+    }
+
+    aiAnalysis = (parsed.analise || "").trim();
+    aiRecommendations = (parsed.recomendacoes || "").trim();
+    aiConclusion = (parsed.conclusao || "").trim();
+
+    if (!aiAnalysis || (report_type === "technical" && (!aiRecommendations || !aiConclusion))) {
+      throw new Error("Conteúdo das seções finais incompleto. O laudo não foi emitido — tente gerar novamente.");
+    }
+
 
     // Group scores by department
     const deptGroups: Record<string, any[]> = {};
