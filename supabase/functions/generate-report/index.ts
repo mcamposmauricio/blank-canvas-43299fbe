@@ -103,6 +103,20 @@ Deno.serve(async (req) => {
     const primaryColor = tenant?.primary_color || "#1e3a5f";
     const minGroupSize = tenant?.min_group_size ?? 7;
 
+    // ── Pré-condição: sem dados válidos não existe laudo ─────────────────
+    if (totalResponses < minGroupSize || scores.length === 0) {
+      return new Response(
+        JSON.stringify({
+          error:
+            `Não é possível emitir o laudo: a campanha possui ${totalResponses} resposta(s) completa(s) e ` +
+            `${scores.length} dimensão(ões) apurada(s). São necessárias no mínimo ${minGroupSize} respostas ` +
+            `completas e o processamento do scoring (Reprocessar) antes da emissão.`,
+        }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
+
     // Estrutura do instrumento vinda do survey_template da campanha (sem mapeamento fixo)
     const { data: templateDimensions } = await supabase
       .from("survey_dimensions")
