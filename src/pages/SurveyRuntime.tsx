@@ -162,7 +162,7 @@ export default function SurveyRuntime() {
       const { error: ansErr } = await supabase.from("survey_answers").insert(answerRows);
       if (ansErr) throw ansErr;
 
-      await supabase.from("survey_invitations").update({ is_used: true, used_at: new Date().toISOString() }).eq("id", invitation.id);
+      await supabase.rpc("mark_invitation_used" as any, { _token: token! });
 
       setStep("done");
     } catch (e: any) {
