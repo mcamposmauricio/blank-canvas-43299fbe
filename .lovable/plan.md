@@ -7,13 +7,16 @@ Auditoria confirmada no código e no banco. Estado atual verificado:
 - `generate-report` monta as seções 13/14/16 a partir de um texto de IA dividido por `---`; quando o modelo devolve um bloco extra (ex.: um cabeçalho de capa) todo o conteúdo desloca uma posição — é a causa do off-by-one e dos placeholders `[Nome da Empresa]` / `[Data]` sobrevivendo.
 - 6 dos 9 tenants estão com `min_group_size = 3` (incluindo Brasiltec), embora o default do banco seja 7.
 
-## 1. Template PPI v1.1 (banco)
+## 1. Questionário v1.1 no template existente (banco)
 
-- Adicionar em `survey_templates` a coluna de versão do instrumento; em `survey_items`, o número do item (1–30) e a flag de alerta individual.
-- Criar um **novo** template global `Avaliação de Riscos Psicossociais` versão **1.1**, com as 8 dimensões (nome e ordem) e os 30 itens carregados do `questionario-v1-1.json` anexo (texto exato, `direta`/`invertida`, `alerta_individual` verdadeiro apenas no item 20).
-- Marcar o template global antigo (6 dimensões) e o "FPI v1.0" como não globais e inativos: **não** são alterados nem apagados, para que as campanhas e respostas já coletadas continuem ligadas à versão que o respondente viu. A dimensão "Segurança Psicológica" deixa de existir no instrumento vigente.
-- Campanhas novas passam a usar automaticamente a v1.1.
+- Sem tabelas novas: apenas colunas de apoio em tabelas atuais (`survey_templates.instrument_version`, `survey_items.item_number`, `survey_items.has_individual_alert`).
+- Atualizar **no lugar** o template global atualmente usado pelas campanhas, para refletir exatamente o `questionario-v1-1.json`: nome "Avaliação de Riscos Psicossociais", versão 1.1, as **8 dimensões** (nome e ordem exatos) e os **30 itens** (texto exato, `direta`/`invertida`, número do item).
+  - Reinclui "Clareza e Organização do Trabalho" (9–12) e "Sinais de Desgaste Relacionados ao Trabalho" (28–30); separa "Liderança e Justiça Organizacional" (13–16) de "Relações Sociais no Trabalho" (17–20); remove "Segurança Psicológica".
+  - Itens 12 e 16 passam a `invertida`; itens 20 e 23 recebem os textos novos da v1.1; `has_individual_alert` verdadeiro apenas no item 20.
+  - Itens existentes são reaproveitados por posição sempre que possível, para que as respostas brutas já coletadas continuem apontando para o mesmo item; nada em `survey_answers` é alterado ou apagado.
+- O template FPI v1.0 não global permanece intocado (não é usado por campanhas).
 - `min_group_size = 7` em todos os tenants e default mantido em 7.
+
 
 ## 2. Scoring (`process-scoring`)
 
@@ -33,8 +36,8 @@ Auditoria confirmada no código e no banco. Estado atual verificado:
 
 ## 4. Reemissão de laudos já emitidos
 
-- Ação "Reprocessar e reemitir" nas campanhas encerradas (tela Relatórios): roda o scoring novamente (inversão corrigida) e regera o documento com as seções na ordem certa; o novo laudo substitui o anterior e registra a data de reemissão.
-- Observação honesta: campanhas encerradas cujas respostas foram coletadas no instrumento antigo de 6 dimensões continuarão exibindo essas 6 dimensões — as 8 dimensões só existem para respostas coletadas com o instrumento v1.1. Para essas campanhas a reemissão corrige seções, placeholders, nomenclatura e anonimato.
+- Ação "Reprocessar e reemitir" nas campanhas encerradas (tela Relatórios, sem tela nova): roda o scoring novamente com as fórmulas corrigidas e regera o documento com as seções na ordem certa; o novo laudo substitui o anterior.
+- Como o template é atualizado no lugar, campanhas antigas passam a apresentar as 8 dimensões da v1.1; itens sem resposta correspondente nas dimensões reintroduzidas aparecem com N menor, e a supressão por N < 7 se aplica normalmente.
 
 ## 5. Nomenclatura
 
@@ -43,6 +46,6 @@ Auditoria confirmada no código e no banco. Estado atual verificado:
 
 ## Detalhes técnicos
 
-- Migração: `survey_templates.instrument_version text`, `survey_items.item_number int`, `survey_items.has_individual_alert boolean default false`; seed do novo template global a partir do JSON anexo; `update tenants set min_group_size = 7`.
+- Migração: `survey_templates.instrument_version text`, `survey_items.item_number int`, `survey_items.has_individual_alert boolean default false`; atualização in-place das dimensões e itens do template global a partir do JSON anexo; `update tenants set min_group_size = 7`. Sem tabelas novas e sem dependências novas.
 - Edge functions alteradas: `process-scoring`, `generate-report`, `full-system-export` (texto).
 - Frontend: `src/lib/ppi.ts` (renomeado, com as 8 dimensões v1.1), imports em Dashboard/Analises/Governanca/PlanoAcao/SurveyRuntime/AppSidebar, botão de reemissão em `Relatorios.tsx`. Sem novas telas nem mudanças de tema.
