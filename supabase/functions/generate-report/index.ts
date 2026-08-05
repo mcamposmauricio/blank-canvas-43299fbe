@@ -557,37 +557,37 @@ Regras de escrita obrigatórias:
 
   ${criticalSection}
 
-  ${aiAnalysis ? `
-  <!-- 13. ANÁLISE INTERPRETATIVA / RECOMENDAÇÕES -->
+  <!-- 13. ANÁLISE INTERPRETATIVA -->
   <div class="section">
     <h2>${report_type === "technical" ? "13. Análise Interpretativa" : "Sumário Executivo"}</h2>
     <div class="summary">${aiAnalysis.replace(/\n/g, "<br>")}</div>
-  </div>` : ""}
+  </div>
 
-  ${report_type === "technical" && aiRecommendations ? `
+  ${report_type === "technical" ? `
+  <!-- 14. RECOMENDAÇÕES TÉCNICAS -->
   <div class="section">
     <h2>14. Recomendações Técnicas</h2>
     <div class="summary">${aiRecommendations.replace(/\n/g, "<br>")}</div>
-  </div>` : ""}
+  </div>
 
-  ${report_type === "technical" ? `
   <!-- 15. LIMITAÇÕES -->
   <div class="section">
     <h2>15. Limitações do Estudo</h2>
     <ul>
       <li>Os resultados refletem percepções autorrelatadas dos participantes em um momento específico.</li>
       <li>A avaliação é organizacional e não permite inferências individuais.</li>
-      <li>Grupos com menos de ${tenant?.min_group_size || 7} respondentes foram suprimidos para garantir anonimato.</li>
+      <li>Grupos com menos de ${minGroupSize} respondentes foram suprimidos para garantir anonimato.</li>
       <li>Respondentes que completaram menos de 90% do questionário foram excluídos da análise.</li>
       <li>O instrumento avalia fatores organizacionais e não constitui avaliação clínica de saúde mental.</li>
     </ul>
-  </div>` : ""}
+  </div>
 
-  ${report_type === "technical" && aiConclusion ? `
+  <!-- 16. CONCLUSÃO TÉCNICA -->
   <div class="section">
     <h2>16. Conclusão Técnica</h2>
     <div class="summary">${aiConclusion.replace(/\n/g, "<br>")}</div>
   </div>` : ""}
+
 
   <!-- DISCLAIMER -->
   <div class="disclaimer">
