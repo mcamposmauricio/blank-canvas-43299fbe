@@ -116,6 +116,41 @@ export default function Relatorios() {
     enabled: !!tenantId,
   });
 
+  // Limite de anonimato do tenant
+  const { data: minGroupSize = 7 } = useQuery({
+    queryKey: ["tenant_min_group_size", tenantId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("tenants")
+        .select("min_group_size")
+        .eq("id", tenantId!)
+        .single();
+      if (error) throw error;
+      return (data as any)?.min_group_size ?? 7;
+    },
+    enabled: !!tenantId,
+  });
+
+  // Respostas completas por campanha (count exato, evita o limite de 1000 linhas)
+  const { data: responseCounts = {} } = useQuery({
+    queryKey: ["campaign_response_counts", tenantId, campaigns.map((c: any) => c.id).join(",")],
+    queryFn: async () => {
+      const entries = await Promise.all(
+        campaigns.map(async (c: any) => {
+          const { count } = await supabase
+            .from("survey_responses")
+            .select("id", { head: true, count: "exact" })
+            .eq("campaign_id", c.id)
+            .eq("is_complete", true);
+          return [c.id, count ?? 0] as [string, number];
+        })
+      );
+      return Object.fromEntries(entries) as Record<string, number>;
+    },
+    enabled: !!tenantId && campaigns.length > 0,
+  });
+
+
   const generateReport = useMutation({
     mutationFn: async ({ campaignId, type, campaignName }: { campaignId: string; type: string; campaignName: string }) => {
       setGeneratingId(`${campaignId}-${type}`);
