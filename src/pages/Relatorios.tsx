@@ -11,6 +11,26 @@ import { toast } from "sonner";
 import { useState } from "react";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { FunctionsHttpError } from "@supabase/supabase-js";
+
+// Extrai a mensagem real retornada pela edge function em respostas não-2xx
+async function extractFunctionError(error: unknown, fallback: string): Promise<string> {
+  if (error instanceof FunctionsHttpError) {
+    try {
+      const body = await error.context.json();
+      if (body?.error) return body.error as string;
+      if (body?.message) return body.message as string;
+    } catch {
+      try {
+        const text = await error.context.text();
+        if (text) return text;
+      } catch { /* ignore */ }
+    }
+  }
+  const msg = (error as any)?.message as string | undefined;
+  if (msg && !msg.includes("non-2xx")) return msg;
+  return fallback;
+}
 
 async function writeAuditLog(tenantId: string, userId: string | undefined, action: string, entityType: string, entityId: string | null, details: Record<string, unknown>) {
   await (supabase.from("audit_logs") as any).insert({
@@ -22,6 +42,7 @@ async function writeAuditLog(tenantId: string, userId: string | undefined, actio
     details,
   });
 }
+
 
 export default function Relatorios() {
   const { tenantId } = useTenant();
