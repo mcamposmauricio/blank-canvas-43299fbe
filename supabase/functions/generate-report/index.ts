@@ -510,8 +510,9 @@ Regras de escrita obrigatórias:
     <div class="info-grid">
       <div class="info-item"><label>Respostas válidas</label><span>${totalResponses}</span></div>
       <div class="info-item"><label>Critério de validação</label><span>≥ 90% do questionário respondido</span></div>
-      <div class="info-item"><label>Anonimato</label><span>Grupos com N ≥ ${tenant?.min_group_size || 7}</span></div>
-      <div class="info-item"><label>Dimensões avaliadas</label><span>${scores.length}</span></div>
+      <div class="info-item"><label>Anonimato</label><span>Grupos com N ≥ ${minGroupSize}</span></div>
+      <div class="info-item"><label>Dimensões avaliadas</label><span>${orderedDimensions.length}</span></div>
+
     </div>
   </div>
 
