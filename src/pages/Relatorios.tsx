@@ -136,6 +136,71 @@ export default function Relatorios() {
     },
   });
 
+  // Reprocessa o scoring da campanha e reemite o laudo, substituindo o anterior
+  const reissueReport = useMutation({
+    mutationFn: async ({ campaignId, campaignName }: { campaignId: string; campaignName: string }) => {
+      setGeneratingId(`${campaignId}-reissue`);
+
+      const scoring = await supabase.functions.invoke("process-scoring", {
+        body: { campaign_id: campaignId },
+      });
+      if (scoring.error) throw new Error("Falha ao reprocessar as respostas da campanha. Tente novamente.");
+
+      const { data: existing } = await supabase
+        .from("reports")
+        .select("id, report_type, version")
+        .eq("campaign_id", campaignId)
+        .eq("tenant_id", tenantId!);
+
+      const targets = (existing && existing.length > 0)
+        ? Array.from(new Set(existing.map((r: any) => r.report_type)))
+        : ["technical"];
+
+      for (const type of targets) {
+        const previous = (existing || []).filter((r: any) => r.report_type === type);
+        const nextVersion = previous.reduce((mx: number, r: any) => Math.max(mx, r.version || 1), 0) + 1;
+
+        const { data: reportData, error: insertErr } = await supabase.from("reports").insert({
+          campaign_id: campaignId,
+          report_type: type,
+          tenant_id: tenantId,
+          file_url: null,
+          version: nextVersion,
+          generated_at: new Date().toISOString(),
+        }).select("id").single();
+        if (insertErr) throw insertErr;
+
+        const res = await supabase.functions.invoke("generate-report", {
+          body: { campaign_id: campaignId, report_type: type, tenant_id: tenantId, report_id: reportData!.id },
+        });
+        if (res.error) {
+          await supabase.from("reports").delete().eq("id", reportData!.id);
+          throw new Error(
+            res.data?.error ||
+            "Falha na reemissão: a verificação de integridade do laudo não passou ou o conteúdo não pôde ser gerado. O laudo anterior foi mantido."
+          );
+        }
+
+        // Substitui o laudo anterior
+        for (const old of previous) {
+          await supabase.from("reports").delete().eq("id", old.id);
+        }
+        await writeAuditLog(tenantId!, user?.id, "reissue_report", "report", reportData!.id, {
+          campaign: campaignName, type, version: nextVersion,
+        });
+      }
+    },
+    onSuccess: () => {
+      setGeneratingId(null);
+      queryClient.invalidateQueries({ queryKey: ["reports"] });
+      toast.success("Respostas reprocessadas e laudo reemitido");
+    },
+    onError: (e: any) => {
+      setGeneratingId(null);
+      toast.error(e.message);
+    },
+  });
+
   const deleteReport = useMutation({
     mutationFn: async (id: string) => {
       const { error } = await supabase.from("reports").delete().eq("id", id);
@@ -147,6 +212,7 @@ export default function Relatorios() {
     },
     onError: (e: any) => toast.error(e.message),
   });
+
 
   const reportTypeLabels: Record<string, string> = {
     technical: "Laudo Técnico",
