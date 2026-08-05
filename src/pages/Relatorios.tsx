@@ -11,6 +11,26 @@ import { toast } from "sonner";
 import { useState } from "react";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { FunctionsHttpError } from "@supabase/supabase-js";
+
+// Extrai a mensagem real retornada pela edge function em respostas não-2xx
+async function extractFunctionError(error: unknown, fallback: string): Promise<string> {
+  if (error instanceof FunctionsHttpError) {
+    try {
+      const body = await error.context.json();
+      if (body?.error) return body.error as string;
+      if (body?.message) return body.message as string;
+    } catch {
+      try {
+        const text = await error.context.text();
+        if (text) return text;
+      } catch { /* ignore */ }
+    }
+  }
+  const msg = (error as any)?.message as string | undefined;
+  if (msg && !msg.includes("non-2xx")) return msg;
+  return fallback;
+}
 
 async function writeAuditLog(tenantId: string, userId: string | undefined, action: string, entityType: string, entityId: string | null, details: Record<string, unknown>) {
   await (supabase.from("audit_logs") as any).insert({
@@ -22,6 +42,7 @@ async function writeAuditLog(tenantId: string, userId: string | undefined, actio
     details,
   });
 }
+
 
 export default function Relatorios() {
   const { tenantId } = useTenant();
@@ -95,8 +116,47 @@ export default function Relatorios() {
     enabled: !!tenantId,
   });
 
+  // Limite de anonimato do tenant
+  const { data: minGroupSize = 7 } = useQuery({
+    queryKey: ["tenant_min_group_size", tenantId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("tenants")
+        .select("min_group_size")
+        .eq("id", tenantId!)
+        .single();
+      if (error) throw error;
+      return (data as any)?.min_group_size ?? 7;
+    },
+    enabled: !!tenantId,
+  });
+
+  // Respostas completas por campanha (count exato, evita o limite de 1000 linhas)
+  const { data: responseCounts = {} } = useQuery({
+    queryKey: ["campaign_response_counts", tenantId, campaigns.map((c: any) => c.id).join(",")],
+    queryFn: async () => {
+      const entries = await Promise.all(
+        campaigns.map(async (c: any) => {
+          const { count } = await supabase
+            .from("survey_responses")
+            .select("id", { head: true, count: "exact" })
+            .eq("campaign_id", c.id)
+            .eq("is_complete", true);
+          return [c.id, count ?? 0] as [string, number];
+        })
+      );
+      return Object.fromEntries(entries) as Record<string, number>;
+    },
+    enabled: !!tenantId && campaigns.length > 0,
+  });
+
+
   const generateReport = useMutation({
     mutationFn: async ({ campaignId, type, campaignName }: { campaignId: string; type: string; campaignName: string }) => {
+      const completed = responseCounts[campaignId] ?? 0;
+      if (completed < minGroupSize) {
+        throw new Error(`Laudo indisponível: a campanha possui ${completed} resposta(s) completa(s) e o mínimo para preservar o anonimato é ${minGroupSize}.`);
+      }
       setGeneratingId(`${campaignId}-${type}`);
       const { data: reportData, error: insertErr } = await supabase.from("reports").insert({
         campaign_id: campaignId,
@@ -115,12 +175,10 @@ export default function Relatorios() {
         },
       });
       if (res.error) {
-        const msg = res.error.message || "";
-        if (msg.includes("non-2xx")) {
-          throw new Error("Erro ao gerar relatório. Verifique se a campanha possui respostas processadas e tente novamente.");
-        }
-        throw new Error(msg || "Erro na geração do relatório");
+        await supabase.from("reports").delete().eq("id", reportData.id);
+        throw new Error(await extractFunctionError(res.error, "Erro ao gerar relatório. Verifique se a campanha possui respostas processadas e tente novamente."));
       }
+
       // Audit log
       await writeAuditLog(tenantId!, user?.id, "generate_report", "report", reportData.id, { campaign: campaignName, type });
       return res.data;
@@ -139,12 +197,17 @@ export default function Relatorios() {
   // Reprocessa o scoring da campanha e reemite o laudo, substituindo o anterior
   const reissueReport = useMutation({
     mutationFn: async ({ campaignId, campaignName }: { campaignId: string; campaignName: string }) => {
+      const completed = responseCounts[campaignId] ?? 0;
+      if (completed < minGroupSize) {
+        throw new Error(`Reemissão indisponível: a campanha possui ${completed} resposta(s) completa(s) e o mínimo para preservar o anonimato é ${minGroupSize}. O laudo anterior foi mantido.`);
+      }
       setGeneratingId(`${campaignId}-reissue`);
 
       const scoring = await supabase.functions.invoke("process-scoring", {
         body: { campaign_id: campaignId },
       });
-      if (scoring.error) throw new Error("Falha ao reprocessar as respostas da campanha. Tente novamente.");
+      if (scoring.error) throw new Error(await extractFunctionError(scoring.error, "Falha ao reprocessar as respostas da campanha. Tente novamente."));
+
 
       const { data: existing } = await supabase
         .from("reports")
@@ -176,10 +239,13 @@ export default function Relatorios() {
         if (res.error) {
           await supabase.from("reports").delete().eq("id", reportData!.id);
           throw new Error(
-            res.data?.error ||
-            "Falha na reemissão: a verificação de integridade do laudo não passou ou o conteúdo não pôde ser gerado. O laudo anterior foi mantido."
+            await extractFunctionError(
+              res.error,
+              "Falha na reemissão: o conteúdo do laudo não pôde ser gerado. O laudo anterior foi mantido."
+            )
           );
         }
+
 
         // Substitui o laudo anterior
         for (const old of previous) {
@@ -266,6 +332,9 @@ export default function Relatorios() {
                 const isTechGen = generatingId === `${c.id}-technical`;
                 const isExecGen = generatingId === `${c.id}-executive`;
                 const isReissuing = generatingId === `${c.id}-reissue`;
+                const completed = responseCounts[c.id] ?? 0;
+                const insufficient = completed < minGroupSize;
+                const blocked = !!generatingId || insufficient;
                 return (
                   <div key={c.id} className="flex items-center justify-between p-4 border border-border/60 rounded-xl hover:bg-muted/30 transition-colors">
                     <div className="flex items-center gap-3">
@@ -275,19 +344,25 @@ export default function Relatorios() {
                       <div>
                         <span className="font-medium text-foreground">{c.name}</span>
                         <Badge variant="outline" className="ml-2 text-[10px]">{c.status === "closed" ? "Encerrada" : "Arquivada"}</Badge>
+                        {insufficient && (
+                          <p className="text-xs text-muted-foreground mt-1">
+                            {completed} de {minGroupSize} respostas — laudo indisponível por anonimato
+                          </p>
+                        )}
                       </div>
                     </div>
                     <div className="flex flex-wrap gap-2 justify-end">
-                      <Button size="sm" variant="outline" onClick={() => generateReport.mutate({ campaignId: c.id, type: "technical", campaignName: c.name })} disabled={!!generatingId} className="gap-1.5">
+                      <Button size="sm" variant="outline" title={insufficient ? `Mínimo de ${minGroupSize} respostas completas` : undefined} onClick={() => generateReport.mutate({ campaignId: c.id, type: "technical", campaignName: c.name })} disabled={blocked} className="gap-1.5">
                         {isTechGen ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FilePlus className="h-3.5 w-3.5" />}
                         Laudo Técnico
                       </Button>
-                      <Button size="sm" variant="outline" onClick={() => generateReport.mutate({ campaignId: c.id, type: "executive", campaignName: c.name })} disabled={!!generatingId} className="gap-1.5">
+                      <Button size="sm" variant="outline" title={insufficient ? `Mínimo de ${minGroupSize} respostas completas` : undefined} onClick={() => generateReport.mutate({ campaignId: c.id, type: "executive", campaignName: c.name })} disabled={blocked} className="gap-1.5">
                         {isExecGen ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FilePlus className="h-3.5 w-3.5" />}
                         Rel. Executivo
                       </Button>
-                      <Button size="sm" variant="secondary" onClick={() => reissueReport.mutate({ campaignId: c.id, campaignName: c.name })} disabled={!!generatingId} className="gap-1.5">
+                      <Button size="sm" variant="secondary" title={insufficient ? `Mínimo de ${minGroupSize} respostas completas` : undefined} onClick={() => reissueReport.mutate({ campaignId: c.id, campaignName: c.name })} disabled={blocked} className="gap-1.5">
                         {isReissuing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+
                         Reprocessar e reemitir
                       </Button>
                     </div>
