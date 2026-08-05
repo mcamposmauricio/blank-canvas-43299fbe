@@ -229,9 +229,29 @@ Deno.serve(async (req) => {
         });
       }
     }
+    // 8b. Alerta de ocorrência de itens com alerta individual (item 20 — assédio/violência).
+    // Qualquer resposta 4 ou 5 gera o alerta, independente da média da dimensão.
+    // O alerta é anônimo: registra apenas a contagem de ocorrências.
+    for (const item of individualAlertItems) {
+      const occurrences = allAnswers.filter(
+        (a: any) => a.item_id === item.id && Number(a.value) >= 4
+      ).length;
+      if (occurrences > 0) {
+        alertRows.push({
+          tenant_id: campaign.tenant_id,
+          campaign_id,
+          dimension_id: item.dimension_id,
+          dimension_name: dimNameMap.get(item.dimension_id) || "",
+          score: occurrences,
+          alert_type: "harassment_alert",
+        });
+      }
+    }
+
     if (alertRows.length > 0) {
       await supabase.from("risk_alerts").insert(alertRows);
     }
+
 
     // 9. Group-level aggregation
     const groupScoreRows: any[] = [];
