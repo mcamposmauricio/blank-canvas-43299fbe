@@ -153,6 +153,10 @@ export default function Relatorios() {
 
   const generateReport = useMutation({
     mutationFn: async ({ campaignId, type, campaignName }: { campaignId: string; type: string; campaignName: string }) => {
+      const completed = responseCounts[campaignId] ?? 0;
+      if (completed < minGroupSize) {
+        throw new Error(`Laudo indisponível: a campanha possui ${completed} resposta(s) completa(s) e o mínimo para preservar o anonimato é ${minGroupSize}.`);
+      }
       setGeneratingId(`${campaignId}-${type}`);
       const { data: reportData, error: insertErr } = await supabase.from("reports").insert({
         campaign_id: campaignId,
@@ -171,12 +175,10 @@ export default function Relatorios() {
         },
       });
       if (res.error) {
-        const msg = res.error.message || "";
-        if (msg.includes("non-2xx")) {
-          throw new Error("Erro ao gerar relatório. Verifique se a campanha possui respostas processadas e tente novamente.");
-        }
-        throw new Error(msg || "Erro na geração do relatório");
+        await supabase.from("reports").delete().eq("id", reportData.id);
+        throw new Error(await extractFunctionError(res.error, "Erro ao gerar relatório. Verifique se a campanha possui respostas processadas e tente novamente."));
       }
+
       // Audit log
       await writeAuditLog(tenantId!, user?.id, "generate_report", "report", reportData.id, { campaign: campaignName, type });
       return res.data;
