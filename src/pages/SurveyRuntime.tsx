@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
 import { CheckCircle2, AlertTriangle, ChevronLeft, ChevronRight, Send, Clock, XCircle } from "lucide-react";
-import { FLEW_DISCLAIMER } from "@/lib/flew";
+import { PPI_DISCLAIMER } from "@/lib/ppi";
 
 type SurveyItem = {
   id: string;
@@ -302,7 +302,7 @@ export default function SurveyRuntime() {
               </ul>
             </div>
             <div className="bg-warning/10 border border-warning/20 rounded-xl p-3">
-              <p className="text-xs text-warning font-medium italic">{FLEW_DISCLAIMER}</p>
+              <p className="text-xs text-warning font-medium italic">{PPI_DISCLAIMER}</p>
             </div>
             <div className="flex items-center space-x-2 bg-muted/50 p-3 rounded-xl">
               <Checkbox id="consent" checked={consentAccepted} onCheckedChange={(c) => setConsentAccepted(c === true)} />

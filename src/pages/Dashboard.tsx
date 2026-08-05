@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { BarChart3, Users, ClipboardList, TrendingUp, Activity, Calendar, AlertTriangle } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
-import { classifyRisk, getBarColorClass, getRiskBadgeClass, FLEW_DISCLAIMER } from "@/lib/flew";
+import { classifyRisk, getBarColorClass, getRiskBadgeClass, PPI_DISCLAIMER } from "@/lib/ppi";
 
 // SVG Gauge component for IGP
 function GaugeChart({ value, size = 200 }: { value: number; size?: number }) {
@@ -394,7 +394,7 @@ export default function Dashboard() {
 
       {/* People Pulse Disclaimer */}
       <div className="text-[11px] text-muted-foreground/60 text-center italic px-4">
-        {FLEW_DISCLAIMER}
+        {PPI_DISCLAIMER}
       </div>
     </div>
   );

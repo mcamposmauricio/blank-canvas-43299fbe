@@ -12,7 +12,7 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
   LineChart, Line, ReferenceLine,
 } from "recharts";
-import { classifyRisk, getRiskBadgeClass } from "@/lib/flew";
+import { classifyRisk, getRiskBadgeClass } from "@/lib/ppi";
 
 function getScoreColor(score: number): string {
   const { level } = classifyRisk(score);

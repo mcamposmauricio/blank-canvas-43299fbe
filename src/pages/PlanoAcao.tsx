@@ -15,7 +15,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Plus, CheckCircle2, Clock, Loader2, Target, AlertCircle, AlertTriangle, Pencil, Trash2 } from "lucide-react";
 import { toast } from "sonner";
-import { FLEW_DIMENSIONS, classifyRisk, getRiskBadgeClass } from "@/lib/flew";
+import { PPI_DIMENSIONS, classifyRisk, getRiskBadgeClass } from "@/lib/ppi";
 
 
 const statusConfig: Record<string, { label: string; icon: any; variant: "default" | "secondary" | "outline"; border: string; color: string }> = {
@@ -190,7 +190,7 @@ export default function PlanoAcao() {
                 <Select value={form.dimension_name} onValueChange={(v) => setForm({ ...form, dimension_name: v })}>
                   <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
                   <SelectContent>
-                    {FLEW_DIMENSIONS.map((d) => <SelectItem key={d} value={d}>{d}</SelectItem>)}
+                    {PPI_DIMENSIONS.map((d) => <SelectItem key={d} value={d}>{d}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
@@ -229,7 +229,7 @@ export default function PlanoAcao() {
               <Select value={editForm.dimension_name} onValueChange={(v) => setEditForm({ ...editForm, dimension_name: v })}>
                 <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
                 <SelectContent>
-                  {FLEW_DIMENSIONS.map((d) => <SelectItem key={d} value={d}>{d}</SelectItem>)}
+                  {PPI_DIMENSIONS.map((d) => <SelectItem key={d} value={d}>{d}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
