@@ -455,11 +455,13 @@ Regras de escrita obrigatórias:
   <div class="section">
     <h2>5. Fundamentação Metodológica — PPI</h2>
     <div class="methodology">
-      <p><strong>People Pulse Index (PPI) v1.0</strong></p>
-      <p>Instrumento padronizado de avaliação de riscos psicossociais organizacionais composto por 30 itens distribuídos em 8 dimensões, baseado no modelo Demanda-Controle-Suporte complementado com dimensões de Reconhecimento, Equilíbrio Vida-Trabalho e Sinais de Desgaste.</p>
+      <p><strong>People Pulse Index (PPI) v1.1</strong></p>
+      <p>Instrumento padronizado de avaliação de riscos psicossociais organizacionais composto por ${totalItems} itens distribuídos em ${instrumentDimensions.length} dimensões, baseado no modelo Demanda-Controle-Suporte complementado com dimensões de Reconhecimento, Trabalho e Vida Pessoal e Sinais de Desgaste.</p>
       <p><strong>Escala:</strong> Likert de 5 pontos (1 = Nunca/Quase nunca a 5 = Sempre)</p>
       <p><strong>Itens invertidos:</strong> Tratados com fórmula (6 − resposta) para uniformizar a direção do risco</p>
       <p><strong>Score por dimensão:</strong> Média × 20 (range 20-100)</p>
+      <p><strong>IGP — Índice Geral Psicossocial:</strong> média dos scores das dimensões avaliadas, na mesma escala de 20 a 100</p>
+      <p><strong>Anonimato:</strong> resultados por grupo são divulgados apenas quando N ≥ ${minGroupSize} respondentes</p>
       <p><strong>Classificação de risco:</strong></p>
       <ul>
         <li>0–33: <span style="color:#22c55e;font-weight:bold;">Baixo risco</span> — Condições adequadas</li>
@@ -467,7 +469,34 @@ Regras de escrita obrigatórias:
         <li>67–100: <span style="color:#ef4444;font-weight:bold;">Risco elevado</span> — Requer ação prioritária</li>
       </ul>
     </div>
+    <h3 style="margin-top:22px;">5.1 Dimensões avaliadas</h3>
+    <ul>
+      ${instrumentDimensions.map((d) => `<li><strong>${d.name}</strong> — ${d.items.length} ${d.items.length === 1 ? "item" : "itens"}${d.itemNumbers.length ? ` (itens ${d.itemNumbers.join(", ")})` : ""}</li>`).join("")}
+    </ul>
+    <h3 style="margin-top:22px;">5.2 Matriz de rastreabilidade — itens × fatores de risco</h3>
+    <table>
+      <thead><tr style="background:${primaryColor};color:white;">
+        <th style="padding:8px;">Item</th>
+        <th style="padding:8px;">Enunciado</th>
+        <th style="padding:8px;">Dimensão</th>
+        <th style="padding:8px;">Fator de risco psicossocial</th>
+      </tr></thead>
+      <tbody>
+        ${instrumentDimensions.flatMap((d) => d.items.map((it: any) => {
+          const num = it.item_number ?? "—";
+          const fator = num === 11 ? "Gestão de mudanças organizacionais" : d.name;
+          return `<tr>
+            <td style="padding:8px;border:1px solid #ddd;text-align:center;">${num}</td>
+            <td style="padding:8px;border:1px solid #ddd;">${it.text}${it.is_inverted ? " <em>(invertido)</em>" : ""}</td>
+            <td style="padding:8px;border:1px solid #ddd;">${d.name}</td>
+            <td style="padding:8px;border:1px solid #ddd;">${fator}</td>
+          </tr>`;
+        })).join("")}
+      </tbody>
+    </table>
+    <p class="note">O item 11 é rastreado explicitamente ao fator "Gestão de mudanças organizacionais", ainda que estatisticamente componha a dimensão indicada.</p>
   </div>
+
 
   <!-- 6. PROCEDIMENTOS DE COLETA -->
   <div class="section">
