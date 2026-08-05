@@ -332,6 +332,9 @@ export default function Relatorios() {
                 const isTechGen = generatingId === `${c.id}-technical`;
                 const isExecGen = generatingId === `${c.id}-executive`;
                 const isReissuing = generatingId === `${c.id}-reissue`;
+                const completed = responseCounts[c.id] ?? 0;
+                const insufficient = completed < minGroupSize;
+                const blocked = !!generatingId || insufficient;
                 return (
                   <div key={c.id} className="flex items-center justify-between p-4 border border-border/60 rounded-xl hover:bg-muted/30 transition-colors">
                     <div className="flex items-center gap-3">
@@ -341,19 +344,25 @@ export default function Relatorios() {
                       <div>
                         <span className="font-medium text-foreground">{c.name}</span>
                         <Badge variant="outline" className="ml-2 text-[10px]">{c.status === "closed" ? "Encerrada" : "Arquivada"}</Badge>
+                        {insufficient && (
+                          <p className="text-xs text-muted-foreground mt-1">
+                            {completed} de {minGroupSize} respostas — laudo indisponível por anonimato
+                          </p>
+                        )}
                       </div>
                     </div>
                     <div className="flex flex-wrap gap-2 justify-end">
-                      <Button size="sm" variant="outline" onClick={() => generateReport.mutate({ campaignId: c.id, type: "technical", campaignName: c.name })} disabled={!!generatingId} className="gap-1.5">
+                      <Button size="sm" variant="outline" title={insufficient ? `Mínimo de ${minGroupSize} respostas completas` : undefined} onClick={() => generateReport.mutate({ campaignId: c.id, type: "technical", campaignName: c.name })} disabled={blocked} className="gap-1.5">
                         {isTechGen ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FilePlus className="h-3.5 w-3.5" />}
                         Laudo Técnico
                       </Button>
-                      <Button size="sm" variant="outline" onClick={() => generateReport.mutate({ campaignId: c.id, type: "executive", campaignName: c.name })} disabled={!!generatingId} className="gap-1.5">
+                      <Button size="sm" variant="outline" title={insufficient ? `Mínimo de ${minGroupSize} respostas completas` : undefined} onClick={() => generateReport.mutate({ campaignId: c.id, type: "executive", campaignName: c.name })} disabled={blocked} className="gap-1.5">
                         {isExecGen ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FilePlus className="h-3.5 w-3.5" />}
                         Rel. Executivo
                       </Button>
-                      <Button size="sm" variant="secondary" onClick={() => reissueReport.mutate({ campaignId: c.id, campaignName: c.name })} disabled={!!generatingId} className="gap-1.5">
+                      <Button size="sm" variant="secondary" title={insufficient ? `Mínimo de ${minGroupSize} respostas completas` : undefined} onClick={() => reissueReport.mutate({ campaignId: c.id, campaignName: c.name })} disabled={blocked} className="gap-1.5">
                         {isReissuing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+
                         Reprocessar e reemitir
                       </Button>
                     </div>
