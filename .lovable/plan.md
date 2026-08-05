@@ -36,8 +36,8 @@ Auditoria confirmada no código e no banco. Estado atual verificado:
 
 ## 4. Reemissão de laudos já emitidos
 
-- Ação "Reprocessar e reemitir" nas campanhas encerradas (tela Relatórios): roda o scoring novamente (inversão corrigida) e regera o documento com as seções na ordem certa; o novo laudo substitui o anterior e registra a data de reemissão.
-- Observação honesta: campanhas encerradas cujas respostas foram coletadas no instrumento antigo de 6 dimensões continuarão exibindo essas 6 dimensões — as 8 dimensões só existem para respostas coletadas com o instrumento v1.1. Para essas campanhas a reemissão corrige seções, placeholders, nomenclatura e anonimato.
+- Ação "Reprocessar e reemitir" nas campanhas encerradas (tela Relatórios, sem tela nova): roda o scoring novamente com as fórmulas corrigidas e regera o documento com as seções na ordem certa; o novo laudo substitui o anterior.
+- Como o template é atualizado no lugar, campanhas antigas passam a apresentar as 8 dimensões da v1.1; itens sem resposta correspondente nas dimensões reintroduzidas aparecem com N menor, e a supressão por N < 7 se aplica normalmente.
 
 ## 5. Nomenclatura
 
