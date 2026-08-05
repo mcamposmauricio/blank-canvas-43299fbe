@@ -239,10 +239,13 @@ export default function Relatorios() {
         if (res.error) {
           await supabase.from("reports").delete().eq("id", reportData!.id);
           throw new Error(
-            res.data?.error ||
-            "Falha na reemissão: a verificação de integridade do laudo não passou ou o conteúdo não pôde ser gerado. O laudo anterior foi mantido."
+            await extractFunctionError(
+              res.error,
+              "Falha na reemissão: o conteúdo do laudo não pôde ser gerado. O laudo anterior foi mantido."
+            )
           );
         }
+
 
         // Substitui o laudo anterior
         for (const old of previous) {
