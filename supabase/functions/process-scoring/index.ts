@@ -77,12 +77,21 @@ Deno.serve(async (req) => {
       itemsPerDim.set(item.dimension_id, (itemsPerDim.get(item.dimension_id) || 0) + 1);
     }
 
-    // 3. Get all complete responses
-    const { data: responses } = await supabase
-      .from("survey_responses")
-      .select("id, department_id, org_unit_id, job_role_id")
-      .eq("campaign_id", campaign_id)
-      .eq("is_complete", true);
+    // 3. Get all complete responses (paginado — campanhas grandes passam de 1000)
+    const responses: any[] = [];
+    for (let from = 0; ; from += 1000) {
+      const { data: page, error: respErr } = await supabase
+        .from("survey_responses")
+        .select("id, department_id, org_unit_id, job_role_id")
+        .eq("campaign_id", campaign_id)
+        .eq("is_complete", true)
+        .range(from, from + 999);
+      if (respErr) throw respErr;
+      if (!page?.length) break;
+      responses.push(...page);
+      if (page.length < 1000) break;
+    }
+
 
     if (!responses?.length) {
       return new Response(JSON.stringify({ message: "No complete responses found" }), {
@@ -92,16 +101,27 @@ Deno.serve(async (req) => {
 
     const responseIds = responses.map((r: any) => r.id);
 
-    // Fetch all answers in batches
+    // Fetch all answers in batches, paginando explicitamente para não ser
+    // truncado pelo limite padrão de 1000 linhas do PostgREST.
+    const PAGE = 1000;
     let allAnswers: any[] = [];
-    for (let i = 0; i < responseIds.length; i += 50) {
-      const batch = responseIds.slice(i, i + 50);
-      const { data: answers } = await supabase
-        .from("survey_answers")
-        .select("response_id, item_id, value")
-        .in("response_id", batch);
-      if (answers) allAnswers = allAnswers.concat(answers);
+    for (let i = 0; i < responseIds.length; i += 25) {
+      const batch = responseIds.slice(i, i + 25);
+      let from = 0;
+      while (true) {
+        const { data: answers, error: ansErr } = await supabase
+          .from("survey_answers")
+          .select("response_id, item_id, value")
+          .in("response_id", batch)
+          .range(from, from + PAGE - 1);
+        if (ansErr) throw ansErr;
+        if (!answers?.length) break;
+        allAnswers = allAnswers.concat(answers);
+        if (answers.length < PAGE) break;
+        from += PAGE;
+      }
     }
+
 
     // 4. Delete old scores and alerts for this campaign
     await supabase.from("response_scores").delete().in("response_id", responseIds);
