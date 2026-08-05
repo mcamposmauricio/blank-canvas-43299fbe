@@ -598,11 +598,42 @@ Regras de escrita obrigatórias:
   <!-- FOOTER -->
   <div class="footer">
     <p>Documento gerado automaticamente em ${date} — ${tenant?.name || ""}</p>
-    <p>Metodologia: People Pulse Index (PPI) v1.0 | Classificação: NR-1/GRO</p>
+    <p>Metodologia: People Pulse Index (PPI) v1.1 | Classificação: NR-1/GRO</p>
     <p style="margin-top:10px;font-size:10px;">Este documento é confidencial e destinado exclusivamente à organização avaliada.</p>
   </div>
 </body>
 </html>`;
+
+    // ── Verificação de integridade (obrigatória em emissão e reemissão) ──
+    const expectedSections = report_type === "technical"
+      ? [
+          "2. Identificação",
+          "3. Objetivo",
+          "4. Fundamentação Legal",
+          "5. Fundamentação Metodológica",
+          "6. Procedimentos de Coleta",
+          "7. Caracterização da Amostra",
+          "8. Critérios de Análise",
+          "9. Resultados Consolidados",
+          "10. Resultados por Dimensão",
+          "13. Análise Interpretativa",
+          "14. Recomendações Técnicas",
+          "15. Limitações do Estudo",
+          "16. Conclusão Técnica",
+        ]
+      : ["Sumário Executivo", "9. Resultados Consolidados", "10. Resultados por Dimensão"];
+
+    const missingSections = expectedSections.filter((s) => !html.includes(s));
+    const placeholders = [...html.matchAll(/\[[^\]\n<>]{2,60}\]/g)].map((m) => m[0]);
+
+    if (missingSections.length > 0 || placeholders.length > 0) {
+      await supabase.from("reports").delete().eq("id", report_id);
+      const problemas = [
+        missingSections.length ? `seções ausentes: ${missingSections.join(", ")}` : "",
+        placeholders.length ? `placeholders não preenchidos: ${[...new Set(placeholders)].join(", ")}` : "",
+      ].filter(Boolean).join(" | ");
+      throw new Error(`Verificação de integridade do laudo falhou (${problemas}). O laudo não foi gravado — tente gerar novamente.`);
+    }
 
     // Store HTML
     const fileName = `${campaign_id}/${report_type}_v${Date.now()}.html`;
@@ -610,6 +641,7 @@ Regras de escrita obrigatórias:
       .from("reports")
       .upload(fileName, new Blob([html], { type: "text/html" }), { contentType: "text/html", upsert: true });
     if (uploadErr) throw uploadErr;
+
 
     const { data: urlData } = await supabase.storage
       .from("reports")
