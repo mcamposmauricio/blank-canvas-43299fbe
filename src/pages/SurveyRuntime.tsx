@@ -51,15 +51,16 @@ export default function SurveyRuntime() {
 
   async function loadSurvey() {
     try {
-      const { data: inv, error: invErr } = await supabase
-        .from("survey_invitations")
-        .select("*, survey_campaigns(*, survey_templates(*))")
-        .eq("token", token!)
-        .single();
-      if (invErr || !inv) { setStep("error"); return; }
+      // Carrega tudo por função segura (só devolve dados do convite apresentado)
+      const { data: payload, error: rpcErr } = await supabase.rpc("get_survey_by_token" as any, { _token: token! });
+      const survey = payload as any;
+      if (rpcErr || !survey?.invitation) { setStep("error"); return; }
+
+      const inv = survey.invitation;
       if (inv.is_used) { setStep("done"); return; }
 
-      const camp = inv.survey_campaigns;
+      const camp = survey.campaign;
+      if (!camp) { setStep("error"); return; }
 
       // Validate campaign status
       if (camp.status !== "active") {
@@ -91,26 +92,12 @@ export default function SurveyRuntime() {
         });
       }
 
-      // Fetch tenant branding via campaign tenant_id
-      const { data: tenant } = await supabase
-        .from("tenants")
-        .select("name, logo_url, primary_color, secondary_color")
-        .eq("id", camp.tenant_id)
-        .single();
-      if (tenant) setBranding(tenant);
+      if (survey.tenant) setBranding(survey.tenant);
 
-      const { data: dims } = await supabase
-        .from("survey_dimensions")
-        .select("id, name, sort_order")
-        .eq("template_id", camp.template_id)
-        .order("sort_order");
-      if (!dims?.length) { setStep("error"); return; }
-      const { data: surveyItems } = await supabase
-        .from("survey_items")
-        .select("*")
-        .in("dimension_id", dims.map((d) => d.id))
-        .order("sort_order");
-      const enriched = (surveyItems || []).map((item) => ({
+      const dims = (survey.dimensions || []) as { id: string; name: string; sort_order: number }[];
+      if (!dims.length) { setStep("error"); return; }
+      const surveyItems = (survey.items || []) as any[];
+      const enriched = surveyItems.map((item) => ({
         ...item,
         dimension_name: dims.find((d) => d.id === item.dimension_id)?.name || "",
       }));
@@ -120,6 +107,7 @@ export default function SurveyRuntime() {
       setStep("error");
     }
   }
+
 
   const dimensions = [...new Map(items.map((i) => [i.dimension_id, { id: i.dimension_id, name: i.dimension_name }])).values()];
   const currentDimItems = items.filter((i) => i.dimension_id === dimensions[currentDimension]?.id);
