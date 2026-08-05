@@ -101,12 +101,37 @@ Deno.serve(async (req) => {
     const totalResponses = responsesRes.count || 0;
     const alerts = alertsRes.data || [];
     const primaryColor = tenant?.primary_color || "#1e3a5f";
+    const minGroupSize = tenant?.min_group_size ?? 7;
+
+    // Estrutura do instrumento vinda do survey_template da campanha (sem mapeamento fixo)
+    const { data: templateDimensions } = await supabase
+      .from("survey_dimensions")
+      .select("id, name, sort_order, survey_items(item_number, text, is_inverted, has_individual_alert)")
+      .eq("template_id", campaign?.template_id)
+      .order("sort_order");
+
+    const instrumentDimensions = (templateDimensions || []).map((d: any) => {
+      const items = (d.survey_items || [])
+        .slice()
+        .sort((a: any, b: any) => (a.item_number ?? 0) - (b.item_number ?? 0));
+      return {
+        name: d.name as string,
+        items,
+        itemNumbers: items.map((i: any) => i.item_number).filter((n: any) => n != null),
+      };
+    });
+    const totalItems = instrumentDimensions.reduce((s, d) => s + d.items.length, 0);
 
     // Calculate IGP
     const igp = scores.length > 0
       ? Math.round((scores.reduce((s: number, sc: any) => s + Number(sc.avg_score), 0) / scores.length) * 100) / 100
       : 0;
     const igpRisk = classifyRisk(igp);
+
+    // Alerta de ocorrência do item com alerta individual (item 20 — assédio/violência)
+    const harassmentAlert = alerts.find((a: any) => a.alert_type === "harassment_alert");
+    const harassmentCount = harassmentAlert ? Number(harassmentAlert.score) : 0;
+
 
     // Get AI analysis
     let aiAnalysis = "";
