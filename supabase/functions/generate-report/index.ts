@@ -418,7 +418,7 @@ Regras de escrita obrigatórias:
   <!-- 1. CAPA -->
   <div class="cover">
     <h1>${title}</h1>
-    <p class="subtitle">Metodologia People Pulse Index (PPI) v1.0</p>
+    <p class="subtitle">Metodologia People Pulse Index (PPI) v1.1</p>
     <p class="subtitle">${tenant?.name || "—"}</p>
     <p style="color:#999;margin-top:20px;">Documento gerado em ${date}</p>
   </div>
