@@ -59,13 +59,17 @@ Deno.serve(async (req) => {
 
     const { data: items } = await supabase
       .from("survey_items")
-      .select("id, dimension_id, is_inverted")
+      .select("id, dimension_id, is_inverted, has_individual_alert")
       .in("dimension_id", dimensionIds);
 
     const itemMap = new Map<string, { dimension_id: string; is_inverted: boolean }>();
     for (const item of items!) {
       itemMap.set(item.id, { dimension_id: item.dimension_id, is_inverted: item.is_inverted });
     }
+
+    // Itens com alerta individual (ex.: item 20 — assédio/violência no trabalho)
+    const individualAlertItems = (items || []).filter((i: any) => i.has_individual_alert);
+
 
     // Count items per dimension for missing data rules
     const itemsPerDim = new Map<string, number>();
