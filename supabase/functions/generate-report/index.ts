@@ -270,12 +270,32 @@ Regras de escrita obrigatórias:
     const date = new Date().toLocaleDateString("pt-BR");
     const title = report_type === "technical" ? "Laudo Técnico de Avaliação de Riscos Psicossociais" : "Relatório Executivo";
 
-    // Build dimension rows
-    const dimensionRows = scores.map((s: any) => {
+    // Build dimension rows — as dimensões vêm do survey_template (nome e ordem)
+    const scoreByDimName = new Map<string, any>();
+    for (const s of scores) {
+      const nm = s.survey_dimensions?.name;
+      if (nm) scoreByDimName.set(nm, s);
+    }
+    const orderedDimensions = instrumentDimensions.length > 0
+      ? instrumentDimensions.map((d) => ({ name: d.name, score: scoreByDimName.get(d.name) }))
+      : scores.map((s: any) => ({ name: s.survey_dimensions?.name || "—", score: s }));
+
+    const dimensionRows = orderedDimensions.map(({ name, score: s }) => {
+      if (!s) {
+        return `<tr>
+        <td style="padding:10px;border:1px solid #ddd;">${name}</td>
+        <td style="padding:10px;border:1px solid #ddd;text-align:center;">—</td>
+        <td style="padding:10px;border:1px solid #ddd;text-align:center;">Sem dados suficientes</td>
+        <td style="padding:10px;border:1px solid #ddd;text-align:center;">—</td>
+        <td style="padding:10px;border:1px solid #ddd;text-align:center;">—</td>
+        <td style="padding:10px;border:1px solid #ddd;text-align:center;">—</td>
+        <td style="padding:10px;border:1px solid #ddd;text-align:center;">0</td>
+      </tr>`;
+      }
       const score = Number(s.avg_score);
       const risk = classifyRisk(score);
       return `<tr>
-        <td style="padding:10px;border:1px solid #ddd;">${s.survey_dimensions?.name || "—"}</td>
+        <td style="padding:10px;border:1px solid #ddd;">${name}</td>
         <td style="padding:10px;border:1px solid #ddd;text-align:center;font-weight:bold;">${score.toFixed(1)}</td>
         <td style="padding:10px;border:1px solid #ddd;text-align:center;">
           <span style="background:${risk.color}20;color:${risk.color};padding:3px 10px;border-radius:12px;font-size:12px;font-weight:600;">${risk.label}</span>
@@ -286,6 +306,7 @@ Regras de escrita obrigatórias:
         <td style="padding:10px;border:1px solid #ddd;text-align:center;">${s.responses_count}</td>
       </tr>`;
     }).join("");
+
 
     // Group section
     let groupSection = "";
