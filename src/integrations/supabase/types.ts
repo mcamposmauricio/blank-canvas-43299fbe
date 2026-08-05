@@ -1045,6 +1045,7 @@ export type Database = {
           org_unit_id: string
         }[]
       }
+      get_survey_by_token: { Args: { _token: string }; Returns: Json }
       get_user_department_id: { Args: { _user_id: string }; Returns: string }
       get_user_tenant_id: { Args: { _user_id: string }; Returns: string }
       has_role: {
@@ -1054,6 +1055,7 @@ export type Database = {
         }
         Returns: boolean
       }
+      mark_invitation_used: { Args: { _token: string }; Returns: boolean }
       seed_default_org_structure: {
         Args: { _tenant_id: string }
         Returns: undefined
