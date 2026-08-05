@@ -197,12 +197,17 @@ export default function Relatorios() {
   // Reprocessa o scoring da campanha e reemite o laudo, substituindo o anterior
   const reissueReport = useMutation({
     mutationFn: async ({ campaignId, campaignName }: { campaignId: string; campaignName: string }) => {
+      const completed = responseCounts[campaignId] ?? 0;
+      if (completed < minGroupSize) {
+        throw new Error(`Reemissão indisponível: a campanha possui ${completed} resposta(s) completa(s) e o mínimo para preservar o anonimato é ${minGroupSize}. O laudo anterior foi mantido.`);
+      }
       setGeneratingId(`${campaignId}-reissue`);
 
       const scoring = await supabase.functions.invoke("process-scoring", {
         body: { campaign_id: campaignId },
       });
-      if (scoring.error) throw new Error("Falha ao reprocessar as respostas da campanha. Tente novamente.");
+      if (scoring.error) throw new Error(await extractFunctionError(scoring.error, "Falha ao reprocessar as respostas da campanha. Tente novamente."));
+
 
       const { data: existing } = await supabase
         .from("reports")
