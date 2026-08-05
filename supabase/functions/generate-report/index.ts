@@ -339,14 +339,15 @@ Regras de escrita obrigatórias:
             </tr></thead>
             <tbody>${groupRows}</tbody>
           </table>
-          <p class="note">Apenas grupos com N ≥ ${tenant?.min_group_size || 7} respondentes são exibidos, garantindo o anonimato.</p>
+          <p class="note">Apenas grupos com N ≥ ${minGroupSize} respondentes são exibidos, garantindo o anonimato.</p>
         </div>`;
     }
 
     // Critical factors
     let criticalSection = "";
-    if (alerts.length > 0) {
-      const alertRows = alerts.map((a: any) => `
+    const dimensionAlerts = alerts.filter((a: any) => a.alert_type !== "harassment_alert");
+    if (dimensionAlerts.length > 0 || harassmentCount > 0) {
+      const alertRows = dimensionAlerts.map((a: any) => `
         <tr>
           <td style="padding:8px;border:1px solid #ddd;">${a.dimension_name}</td>
           <td style="padding:8px;border:1px solid #ddd;text-align:center;font-weight:bold;color:#ef4444;">${Number(a.score).toFixed(1)}</td>
@@ -356,6 +357,7 @@ Regras de escrita obrigatórias:
       criticalSection = `
         <div class="section alert-box">
           <h2>12. Fatores Críticos Identificados</h2>
+          ${dimensionAlerts.length > 0 ? `
           <p>As seguintes dimensões apresentaram score ≥ 67, indicando risco elevado que requer intervenção:</p>
           <table>
             <thead><tr style="background:#ef4444;color:white;">
@@ -364,9 +366,14 @@ Regras de escrita obrigatórias:
               <th style="padding:8px;">Prioridade</th>
             </tr></thead>
             <tbody>${alertRows}</tbody>
-          </table>
+          </table>` : "<p>Nenhuma dimensão apresentou score ≥ 67 nesta campanha.</p>"}
+          ${harassmentCount > 0 ? `
+          <p style="margin-top:18px;"><strong>Alerta de ocorrência — item 20 (tratamento desrespeitoso, humilhante ou hostil, incluindo assédio moral ou sexual)</strong></p>
+          <p><strong>${harassmentCount}</strong> resposta(s) registraram valor 4 ou 5 nesse item, independentemente da média da dimensão "${harassmentAlert?.dimension_name || "Relações Sociais no Trabalho"}". O registro é anônimo e não permite identificar respondentes.</p>
+          <p>Recomenda-se apuração pelos canais internos adequados da empresa (canal de denúncias, comitê de ética, área de compliance ou RH), com garantia de sigilo e vedação a retaliação.</p>` : ""}
         </div>`;
     }
+
 
     const html = `<!DOCTYPE html>
 <html lang="pt-BR">
