@@ -46,6 +46,6 @@ Auditoria confirmada no código e no banco. Estado atual verificado:
 
 ## Detalhes técnicos
 
-- Migração: `survey_templates.instrument_version text`, `survey_items.item_number int`, `survey_items.has_individual_alert boolean default false`; seed do novo template global a partir do JSON anexo; `update tenants set min_group_size = 7`.
+- Migração: `survey_templates.instrument_version text`, `survey_items.item_number int`, `survey_items.has_individual_alert boolean default false`; atualização in-place das dimensões e itens do template global a partir do JSON anexo; `update tenants set min_group_size = 7`. Sem tabelas novas e sem dependências novas.
 - Edge functions alteradas: `process-scoring`, `generate-report`, `full-system-export` (texto).
 - Frontend: `src/lib/ppi.ts` (renomeado, com as 8 dimensões v1.1), imports em Dashboard/Analises/Governanca/PlanoAcao/SurveyRuntime/AppSidebar, botão de reemissão em `Relatorios.tsx`. Sem novas telas nem mudanças de tema.
