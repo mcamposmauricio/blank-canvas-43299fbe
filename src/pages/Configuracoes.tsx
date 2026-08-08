@@ -175,7 +175,7 @@ export default function Configuracoes() {
           <div className="space-y-3">
             <div className="flex items-center justify-between">
               <Label>Tamanho mínimo do grupo (N mínimo)</Label>
-              <span className="text-lg font-bold text-foreground bg-muted rounded-lg px-3 py-1">{form.min_group_size}</span>
+              <span className="text-lg font-bold text-foreground bg-muted rounded-lg px-3 py-1">{tenant ? form.min_group_size : "—"}</span>
             </div>
             <Slider
               value={[form.min_group_size]}

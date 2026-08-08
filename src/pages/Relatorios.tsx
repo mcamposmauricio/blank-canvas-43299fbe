@@ -3,6 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useTenant } from "@/hooks/useTenant";
 import { useAuth } from "@/hooks/useAuth";
 import { usePermissions } from "@/hooks/usePermissions";
+import { useMinGroupSize } from "@/hooks/useMinGroupSize";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -116,20 +117,9 @@ export default function Relatorios() {
     enabled: !!tenantId,
   });
 
-  // Limite de anonimato do tenant
-  const { data: minGroupSize = 7 } = useQuery({
-    queryKey: ["tenant_min_group_size", tenantId],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("tenants")
-        .select("min_group_size")
-        .eq("id", tenantId!)
-        .single();
-      if (error) throw error;
-      return (data as any)?.min_group_size ?? 7;
-    },
-    enabled: !!tenantId,
-  });
+  // Limite de anonimato configurado pela empresa
+  const { minGroupSize, isLoaded: minGroupLoaded } = useMinGroupSize();
+
 
   // Respostas completas por campanha (count exato, evita o limite de 1000 linhas)
   const { data: responseCounts = {} } = useQuery({
@@ -154,7 +144,7 @@ export default function Relatorios() {
   const generateReport = useMutation({
     mutationFn: async ({ campaignId, type, campaignName }: { campaignId: string; type: string; campaignName: string }) => {
       const completed = responseCounts[campaignId] ?? 0;
-      if (completed < minGroupSize) {
+      if (minGroupSize !== undefined && completed < minGroupSize) {
         throw new Error(`Laudo indisponível: a campanha possui ${completed} resposta(s) completa(s) e o mínimo para preservar o anonimato é ${minGroupSize}.`);
       }
       setGeneratingId(`${campaignId}-${type}`);
@@ -198,7 +188,7 @@ export default function Relatorios() {
   const reissueReport = useMutation({
     mutationFn: async ({ campaignId, campaignName }: { campaignId: string; campaignName: string }) => {
       const completed = responseCounts[campaignId] ?? 0;
-      if (completed < minGroupSize) {
+      if (minGroupSize !== undefined && completed < minGroupSize) {
         throw new Error(`Reemissão indisponível: a campanha possui ${completed} resposta(s) completa(s) e o mínimo para preservar o anonimato é ${minGroupSize}. O laudo anterior foi mantido.`);
       }
       setGeneratingId(`${campaignId}-reissue`);
@@ -333,8 +323,8 @@ export default function Relatorios() {
                 const isExecGen = generatingId === `${c.id}-executive`;
                 const isReissuing = generatingId === `${c.id}-reissue`;
                 const completed = responseCounts[c.id] ?? 0;
-                const insufficient = completed < minGroupSize;
-                const blocked = !!generatingId || insufficient;
+                const insufficient = minGroupLoaded && completed < minGroupSize!;
+                const blocked = !!generatingId || insufficient || !minGroupLoaded;
                 return (
                   <div key={c.id} className="flex items-center justify-between p-4 border border-border/60 rounded-xl hover:bg-muted/30 transition-colors">
                     <div className="flex items-center gap-3">
