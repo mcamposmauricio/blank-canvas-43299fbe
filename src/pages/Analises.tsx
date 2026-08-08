@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useTenant } from "@/hooks/useTenant";
 import { usePermissions } from "@/hooks/usePermissions";
+import { useMinGroupSize } from "@/hooks/useMinGroupSize";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -38,6 +39,7 @@ const CustomTooltip = ({ active, payload, label }: any) => {
 export default function Analises() {
   const { tenantId } = useTenant();
   const { isGestor, departmentFilter } = usePermissions();
+  const { minGroupSize } = useMinGroupSize();
   const [selectedCampaignId, setSelectedCampaignId] = useState<string>("");
 
   const { data: campaigns = [] } = useQuery({
@@ -245,7 +247,7 @@ export default function Analises() {
               <CardHeader><CardTitle>Heatmap por Departamento</CardTitle></CardHeader>
               <CardContent>
                 {heatmapData.length === 0 ? (
-                  <p className="text-muted-foreground text-center py-12">Sem dados de grupo (N ≥ 7 necessário)</p>
+                  <p className="text-muted-foreground text-center py-12">{minGroupSize !== undefined ? `Sem dados de grupo (N ≥ ${minGroupSize} necessário)` : "Sem dados de grupo"}</p>
                 ) : (
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm">

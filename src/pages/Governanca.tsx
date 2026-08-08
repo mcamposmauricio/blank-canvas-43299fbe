@@ -228,7 +228,7 @@ export default function Governanca() {
         {[
           {
             title: "Política de Anonimato",
-            value: `N ≥ ${tenant?.min_group_size || 7}`,
+            value: tenant?.min_group_size != null ? `N ≥ ${tenant.min_group_size}` : "—",
             sub: "Tamanho mínimo de grupo",
             icon: Shield,
             color: "bg-primary/10 text-primary",
@@ -352,7 +352,7 @@ export default function Governanca() {
               <div>
                 <h4 className="font-semibold text-foreground mb-3">Regras de Governança</h4>
                 <ul className="space-y-2 text-sm text-muted-foreground">
-                  <li className="flex items-start gap-2"><Shield className="h-4 w-4 text-primary mt-0.5 shrink-0" />Grupos com N &lt; {tenant?.min_group_size || 7} são suprimidos para garantir anonimato</li>
+                  <li className="flex items-start gap-2"><Shield className="h-4 w-4 text-primary mt-0.5 shrink-0" />Grupos com N &lt; {tenant?.min_group_size ?? "—"} são suprimidos para garantir anonimato</li>
                   <li className="flex items-start gap-2"><Shield className="h-4 w-4 text-primary mt-0.5 shrink-0" />Respostas com &lt; 90% completude são descartadas</li>
                   <li className="flex items-start gap-2"><Shield className="h-4 w-4 text-primary mt-0.5 shrink-0" />Dados pessoais nunca são vinculados às respostas</li>
                   <li className="flex items-start gap-2"><Shield className="h-4 w-4 text-primary mt-0.5 shrink-0" />Consentimento LGPD registrado eletronicamente</li>
