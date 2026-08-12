@@ -17,12 +17,29 @@ Campanha do laudo: **Avaliação NR1 - Agosto** (Theon de Moraes Toledo Piza & A
 
 Ou seja: o scoring dessas campanhas rodou **dois dias antes** da atualização do instrumento. As duas dimensões novas ("Trabalho e Vida Pessoal" e "Sinais de Desgaste Relacionados ao Trabalho") passaram a existir com IDs novos depois do cálculo, então ficaram sem pontuação gravada. O laudo de hoje leu essa pontuação antiga e apresentou as duas como sem dados suficientes — não é limite de anonimato (15 respostas, acima de 7) nem falta de respostas (as respostas dos itens 21 a 30 estão no banco).
 
+## Sim — o laudo reemitido terá números diferentes
+
+Recalculando as 8 dimensões a partir das respostas brutas (com as inversões da v1.1), os valores mudam bastante em relação ao que o laudo de hoje mostra:
+
+| Dimensão | No laudo de hoje | Recalculado v1.1 |
+| --- | --- | --- |
+| Demandas de Trabalho | 61,33 | 65,76 |
+| Autonomia e Controle | 68,27 | 65,33 |
+| Clareza e Organização do Trabalho | 89,60 | 44,83 |
+| Liderança e Justiça Organizacional | 71,73 | 50,67 |
+| Relações Sociais no Trabalho | 71,47 | 60,33 |
+| Reconhecimento, Sentido e Satisfação | 66,67 | 61,00 |
+| Trabalho e Vida Pessoal | sem dados | 58,22 |
+| Sinais de Desgaste Relacionados ao Trabalho | sem dados | 53,64 |
+
+Efeitos no laudo reemitido: as 8 dimensões passam a ter escore (N = 15 em todas), o IGP muda, e as 4 dimensões hoje classificadas como risco elevado (≥ 67) deixam de ser — todas ficam na faixa de atenção. A análise, recomendações e conclusão da IA são reescritas sobre esses novos números.
 
 ## Correção proposta
 
 1. Rodar **"Reprocessar e reemitir"** nas duas campanhas desse cliente ("Avaliação NR1 - Agosto" e "Avaliação TM Associados"), o que recalcula as 8 dimensões a partir das respostas brutas e regera o laudo.
 2. Conferir, após o reprocessamento, que `campaign_scores` tem 8 linhas por campanha e que o novo laudo mostra as 8 dimensões com escore.
 3. Levantar quais outras campanhas encerradas estão no mesmo estado (pontuação com menos dimensões que o template) e listá-las para você decidir se quer reemitir todas em lote.
+
 
 ## Detalhes técnicos
 
