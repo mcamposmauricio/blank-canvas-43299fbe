@@ -8,11 +8,15 @@ Campanha do laudo: **Avaliação NR1 - Agosto** (Theon de Moraes Toledo Piza & A
 - As respostas **existem** para as 8 dimensões: "Trabalho e Vida Pessoal" tem 45 respostas (15 × 3 itens) e "Sinais de Desgaste Relacionados ao Trabalho" tem 44 — todas de respostas completas.
 - Porém, em `campaign_scores` e `response_scores` só existem **6 dimensões** pontuadas (as de ordem 1 a 6). As duas últimas não têm nenhuma linha de pontuação.
 
-## Causa
+## Causa confirmada pelas datas
 
-O cálculo (`process-scoring`) dessa campanha foi executado **antes** da atualização do instrumento para a v1.1. Naquele momento o template tinha 6 dimensões, que foram atualizadas no lugar (mesmos IDs); as duas dimensões novas ("Trabalho e Vida Pessoal" e "Sinais de Desgaste Relacionados ao Trabalho") receberam IDs novos e, por isso, ficaram sem pontuação gravada.
+- Último cálculo de scoring da campanha "Avaliação NR1 - Agosto": **03/08/2026 19:06** (data dos alertas gravados na última execução).
+- Último cálculo da campanha "Avaliação TM Associados": **03/08/2026 14:08**.
+- Atualização do instrumento para a v1.1 (template com as 8 dimensões): **05/08/2026 01:11** (`survey_templates.updated_at`, `instrument_version = 1.1`).
+- Laudo em questão gerado em **12/08/2026 16:55**.
 
-O laudo gerado hoje leu essas pontuações antigas e, não encontrando valores para as duas dimensões novas, as apresentou como sem dados suficientes. Não é limite de anonimato (há 15 respostas, acima de 7) e não é falta de respostas — é pontuação desatualizada.
+Ou seja: o scoring dessas campanhas rodou **dois dias antes** da atualização do instrumento. As duas dimensões novas ("Trabalho e Vida Pessoal" e "Sinais de Desgaste Relacionados ao Trabalho") passaram a existir com IDs novos depois do cálculo, então ficaram sem pontuação gravada. O laudo de hoje leu essa pontuação antiga e apresentou as duas como sem dados suficientes — não é limite de anonimato (15 respostas, acima de 7) nem falta de respostas (as respostas dos itens 21 a 30 estão no banco).
+
 
 ## Correção proposta
 
