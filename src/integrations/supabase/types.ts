@@ -954,6 +954,27 @@ export type Database = {
           },
         ]
       }
+      system_settings: {
+        Row: {
+          id: string
+          is_locked: boolean
+          lock_message: string
+          updated_at: string
+        }
+        Insert: {
+          id: string
+          is_locked?: boolean
+          lock_message?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          is_locked?: boolean
+          lock_message?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       tenants: {
         Row: {
           created_at: string
