@@ -9,6 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { toast } from "sonner";
 import { Building2, Lock, Mail, UserPlus, Users, Send, BarChart3, Shield, Layers, Palette } from "lucide-react";
 import { BrandLogo } from "@/components/brand/BrandLogo";
+import { useSystemLock } from "@/hooks/useSystemLock";
 
 const graphNodes = [
   { icon: Building2, label: "Estrutura", cx: 140, cy: 80, tx: 115, ty: 42, delay: 0 },
@@ -34,9 +35,14 @@ export default function Auth() {
   const [forgotEmail, setForgotEmail] = useState("");
   const [forgotLoading, setForgotLoading] = useState(false);
   const navigate = useNavigate();
+  const { isLocked, message: lockMessage } = useSystemLock();
 
   const handleForgotPassword = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isLocked) {
+      toast.error(lockMessage);
+      return;
+    }
     setForgotLoading(true);
     try {
       await supabase.auth.resetPasswordForEmail(forgotEmail, {
@@ -57,6 +63,11 @@ export default function Auth() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isLocked) {
+      await supabase.auth.signOut();
+      toast.error(lockMessage);
+      return;
+    }
     setLoading(true);
 
     try {
